@@ -203,17 +203,17 @@ class LocalHttpServer(private val context: Context) {
                         when (requestedType) {
                             "mihomo", "clash", "clashmeta" -> {
                                 val yaml = ClashConfigGenerator.generateYaml(targetNodes, isMihomo = true)
-                                sendRawResponse(outputStream, 200, "OK", "text/yaml; charset=UTF-8", yaml)
+                                sendRawResponse(outputStream, 200, "OK", "text/yaml; charset=UTF-8", yaml, filename = "subscription.yaml")
                                 logAccess(clientIp, path, "mihomo", userAgent, 200)
                             }
                             "base64" -> {
                                 val b64 = Base64Generator.generateBase64(targetNodes)
-                                sendRawResponse(outputStream, 200, "OK", "text/plain; charset=UTF-8", b64)
+                                sendRawResponse(outputStream, 200, "OK", "text/plain; charset=UTF-8", b64, filename = "subscription.txt")
                                 logAccess(clientIp, path, "base64", userAgent, 200)
                             }
                             else -> { // singbox
                                 val json = SingBoxConfigGenerator.generateJson(targetNodes, inboundPort = 2080)
-                                sendRawResponse(outputStream, 200, "OK", "application/json; charset=UTF-8", json)
+                                sendRawResponse(outputStream, 200, "OK", "application/json; charset=UTF-8", json, filename = "singbox.json")
                                 logAccess(clientIp, path, "singbox", userAgent, 200)
                             }
                         }
@@ -240,15 +240,21 @@ class LocalHttpServer(private val context: Context) {
         statusCode: Int,
         statusText: String,
         contentType: String,
-        body: String
+        body: String,
+        filename: String = ""
     ) {
         val bodyBytes = body.toByteArray(Charsets.UTF_8)
-        val header = "HTTP/1.1 $statusCode $statusText\r\n" +
+        var header = "HTTP/1.1 $statusCode $statusText\r\n" +
                 "Content-Type: $contentType\r\n" +
                 "Content-Length: ${bodyBytes.size}\r\n" +
                 "Access-Control-Allow-Origin: *\r\n" +
                 "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
-                "Connection: close\r\n\r\n"
+                "profile-update-interval: 24\r\n" +
+                "subscription-userinfo: upload=0; download=0; total=1073741824000; expire=0\r\n"
+        if (filename.isNotEmpty()) {
+            header += "Content-Disposition: attachment; filename=\"$filename\"\r\n"
+        }
+        header += "Connection: close\r\n\r\n"
 
         outputStream.write(header.toByteArray(Charsets.UTF_8))
         outputStream.write(bodyBytes)

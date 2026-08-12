@@ -8,12 +8,23 @@ import java.nio.charset.StandardCharsets
 
 object SingBoxConfigGenerator {
 
+    private val fallbackDummyNode = ProxyNode(
+        id = -1,
+        name = "示例-请导入节点源",
+        protocol = "ss",
+        server = "127.0.0.1",
+        port = 8388,
+        uuidOrPassword = "password",
+        cipher = "aes-256-gcm",
+        rawUri = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQAMTI3LjAuMC4xOjgzODg=#%E7%A4%BA%E4%BE%8B-%E8%AF%B7%E5%AF%BC%E5%85%A5%E8%8A%82%E7%82%B9%E6%BA%90"
+    )
+
     fun generateJson(
         nodes: List<ProxyNode>,
         routingMode: String = "Rule", // Rule, Global, Direct
         inboundPort: Int = 2080
     ): String {
-        val enabledNodes = nodes.filter { it.enabled }
+        val enabledNodes = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
         val root = JSONObject()
 
         // 1. Log configuration
@@ -307,8 +318,19 @@ object SingBoxConfigGenerator {
 }
 
 object ClashConfigGenerator {
+    private val fallbackDummyNode = ProxyNode(
+        id = -1,
+        name = "示例-请导入节点源",
+        protocol = "ss",
+        server = "127.0.0.1",
+        port = 8388,
+        uuidOrPassword = "password",
+        cipher = "aes-256-gcm",
+        rawUri = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQAMTI3LjAuMC4xOjgzODg=#%E7%A4%BA%E4%BE%8B-%E8%AF%B7%E5%AF%BC%E5%85%A5%E8%8A%82%E7%82%B9%E6%BA%90"
+    )
+
     fun generateYaml(nodes: List<ProxyNode>, isMihomo: Boolean = true): String {
-        val enabled = nodes.filter { it.enabled }
+        val enabled = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
         val sb = StringBuilder()
         sb.appendLine("# Mihomo / Clash Meta Universal Subscription Config")
         sb.appendLine("port: 7890")
@@ -440,8 +462,20 @@ object ClashConfigGenerator {
 }
 
 object Base64Generator {
+    private val fallbackDummyNode = ProxyNode(
+        id = -1,
+        name = "示例-请导入节点源",
+        protocol = "ss",
+        server = "127.0.0.1",
+        port = 8388,
+        uuidOrPassword = "password",
+        cipher = "aes-256-gcm",
+        rawUri = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQAMTI3LjAuMC4xOjgzODg=#%E7%A4%BA%E4%BE%8B-%E8%AF%B7%E5%AF%BC%E5%85%A5%E8%8A%82%E7%82%B9%E6%BA%90"
+    )
+
     fun generateBase64(nodes: List<ProxyNode>): String {
-        val uris = nodes.filter { it.enabled }.joinToString("\n") { it.rawUri }
+        val targetList = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
+        val uris = targetList.joinToString("\n") { it.rawUri }
         return Base64.encodeToString(uris.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP or Base64.DEFAULT)
     }
 }

@@ -120,7 +120,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isZh) "导入订阅源" else "Import Sub", style = MaterialTheme.typography.labelMedium)
+                    Text(if (isZh) "导入节点源" else "Import Nodes", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -395,6 +395,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
     // Add Subscription Source Dialog
     if (showAddSourceDialog) {
         AddSubscriptionDialog(
+            isZh = isZh,
             onDismiss = { showAddSourceDialog = false },
             onAdd = { name, urlOrContent ->
                 viewModel.addSubscription(name, urlOrContent)

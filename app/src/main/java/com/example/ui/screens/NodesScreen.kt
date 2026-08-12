@@ -5,10 +5,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,9 +25,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Search
@@ -85,6 +90,7 @@ fun NodesScreen(viewModel: MainViewModel) {
     var selectedSortMode by remember { mutableStateOf(NodeSortMode.DEFAULT) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showDeleteAllConfirm by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
 
     val protocols = listOf("All", "vless", "vmess", "ss", "trojan", "hysteria2", "socks", "http")
 
@@ -133,9 +139,69 @@ fun NodesScreen(viewModel: MainViewModel) {
             .padding(horizontal = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Top Item 1: Import Node Source Entry Bar (Styled matching OutlinedTextField search box)
         item {
             Spacer(modifier = Modifier.height(4.dp))
-            // Search Bar
+            Surface(
+                onClick = { showImportDialog = true },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("import_node_source_bar")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddLink,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = if (isZh) "导入节点源" else "Import Node Source",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (isZh) "点击导入 URL 订阅链接、剪贴板节点或配置文件..." else "Tap to import subscription URLs or node links...",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = { showImportDialog = true },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isZh) "去导入" else "Import", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
+        // Top Item 2: Search Bar
+        item {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -340,6 +406,17 @@ fun NodesScreen(viewModel: MainViewModel) {
                 TextButton(onClick = { showDeleteAllConfirm = false }) {
                     Text(if (isZh) "取消" else "Cancel")
                 }
+            }
+        )
+    }
+
+    // Full-screen Import Node Source Dialog
+    if (showImportDialog) {
+        AddSubscriptionDialog(
+            isZh = isZh,
+            onDismiss = { showImportDialog = false },
+            onAdd = { name, urlOrContent ->
+                viewModel.addSubscription(name, urlOrContent)
             }
         )
     }
