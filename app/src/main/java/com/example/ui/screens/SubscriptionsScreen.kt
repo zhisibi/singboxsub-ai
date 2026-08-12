@@ -246,6 +246,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                 SavedCustomSubCard(
                     customSub = customSub,
                     port = port,
+                    serverToken = token,
                     localIp = localIp,
                     isZh = isZh,
                     onEdit = {
@@ -438,9 +439,9 @@ fun DefaultSubCard(
     onQrCode: () -> Unit
 ) {
     val cardBgColor = when (formatType) {
-        "singbox" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-        "mihomo" -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-        else -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
+        "singbox" -> MaterialTheme.colorScheme.primaryContainer
+        "mihomo" -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.tertiaryContainer
     }
     val avatarBgColor = when (formatType) {
         "singbox" -> MaterialTheme.colorScheme.primary
@@ -608,6 +609,7 @@ fun DefaultSubCard(
 fun SavedCustomSubCard(
     customSub: SavedCustomSubscription,
     port: Int,
+    serverToken: String,
     localIp: String,
     isZh: Boolean,
     onEdit: () -> Unit,
@@ -616,7 +618,8 @@ fun SavedCustomSubCard(
     onQrCode: (String) -> Unit,
     onDelete: () -> Unit
 ) {
-    val tokenParam = if (customSub.token.isNotBlank()) "&token=${customSub.token}" else ""
+    val activeToken = customSub.token.ifBlank { serverToken }
+    val tokenParam = if (activeToken.isNotBlank()) "&token=$activeToken" else ""
     val nodeParam = if (customSub.nodeIds.isNotBlank()) "&nodes=${customSub.nodeIds}" else ""
 
     val localUrl = "http://127.0.0.1:$port/sub?type=${customSub.format}$tokenParam$nodeParam"
@@ -634,7 +637,7 @@ fun SavedCustomSubCard(
             .fillMaxWidth()
             .clickable { onEdit() },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
@@ -816,7 +819,7 @@ fun ImportedSubCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(

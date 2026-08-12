@@ -134,11 +134,20 @@ class LocalHttpServer(private val context: Context) {
                 val path = uriParts[0]
                 val queryParams = if (uriParts.size > 1) parseQueryParams(uriParts[1]) else emptyMap()
 
-                // Token check
+                // Handle CORS preflight OPTIONS request
+                if (method.equals("OPTIONS", ignoreCase = true)) {
+                    sendRawResponse(outputStream, 200, "OK", "text/plain; charset=UTF-8", "OK")
+                    socket.close()
+                    return@launch
+                }
+
+                // Token check - Local requests from 127.0.0.1 / localhost are always allowed
                 val reqToken = queryParams["token"]?.trim() ?: ""
                 val currentSecret = _secretToken.value.trim()
 
+                val isLocalRequest = clientIp == "127.0.0.1" || clientIp == "localhost" || clientIp == "::1" || clientIp == "0:0:0:0:0:0:0:1"
                 val isAuthorized = when {
+                    isLocalRequest -> true
                     currentSecret.isEmpty() -> true
                     reqToken == currentSecret -> true
                     else -> {
@@ -176,15 +185,19 @@ class LocalHttpServer(private val context: Context) {
 
                         // Filter nodes by query 'nodes' parameter if present
                         val nodesParam = queryParams["nodes"]
+                        val allDbNodes = db.proxyNodeDao().getAllNodes()
+                        val enabledNodes = db.proxyNodeDao().getEnabledNodes().ifEmpty { allDbNodes }
+
                         val targetNodes: List<ProxyNode> = if (!nodesParam.isNullOrBlank()) {
                             val ids = nodesParam.split(",").mapNotNull { it.trim().toLongOrNull() }
                             if (ids.isNotEmpty()) {
-                                db.proxyNodeDao().getNodesByIds(ids)
+                                val found = db.proxyNodeDao().getNodesByIds(ids)
+                                if (found.isNotEmpty()) found else enabledNodes
                             } else {
-                                db.proxyNodeDao().getEnabledNodes()
+                                enabledNodes
                             }
                         } else {
-                            db.proxyNodeDao().getEnabledNodes()
+                            enabledNodes
                         }
 
                         when (requestedType) {
