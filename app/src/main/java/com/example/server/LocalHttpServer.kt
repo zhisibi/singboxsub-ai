@@ -41,29 +41,50 @@ class LocalHttpServer(private val context: Context) {
     val requestCount: StateFlow<Int> = _requestCount
 
     fun startServer(port: Int = 8080, secretToken: String = "") {
-        if (_isRunning.value) stopServer()
+        stopServer()
 
         _port.value = port
         _secretToken.value = secretToken
 
-        serverJob = scope.launch {
-            try {
-                val ss = ServerSocket()
-                ss.reuseAddress = true
-                ss.bind(InetSocketAddress("0.0.0.0", port))
-                serverSocket = ss
-                _isRunning.value = true
+        serverJob = scope.launch(Dispatchers.IO) {
+            var ss: ServerSocket? = null
+            var bound = false
+            var attempts = 0
 
+            while (!bound && attempts < 5) {
+                try {
+                    ss = ServerSocket()
+                    ss.reuseAddress = true
+                    ss.bind(InetSocketAddress("0.0.0.0", port))
+                    bound = true
+                } catch (e: Exception) {
+                    attempts++
+                    try { ss?.close() } catch (_: Exception) {}
+                    ss = null
+                    if (attempts < 5) Thread.sleep(150)
+                }
+            }
+
+            if (!bound || ss == null) {
+                _isRunning.value = false
+                return@launch
+            }
+
+            serverSocket = ss
+            _isRunning.value = true
+
+            try {
                 while (_isRunning.value && !ss.isClosed) {
                     try {
                         val clientSocket = ss.accept()
                         handleClient(clientSocket)
                     } catch (e: Exception) {
-                        if (!_isRunning.value) break
+                        if (!_isRunning.value || ss.isClosed) break
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
                 _isRunning.value = false
             }
         }

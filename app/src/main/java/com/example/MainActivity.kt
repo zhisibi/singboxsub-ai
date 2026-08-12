@@ -88,8 +88,8 @@ class MainActivity : ComponentActivity() {
 }
 
 sealed class NavigationTab(val route: String, val titleEn: String, val titleZh: String, val icon: ImageVector) {
-    object Server : NavigationTab("server", "LAN Server", "局域网服务", Icons.Default.Dns)
-    object Subscriptions : NavigationTab("subscriptions", "Subscriptions", "订阅管理", Icons.Default.RssFeed)
+    object Server : NavigationTab("server", "Dashboard", "首页", Icons.Default.Dns)
+    object Subscriptions : NavigationTab("subscriptions", "Subscriptions", "订阅列表", Icons.Default.RssFeed)
     object Nodes : NavigationTab("nodes", "Nodes", "节点列表", Icons.Default.List)
     object Config : NavigationTab("config", "Converter Rules", "配置转换", Icons.Default.Settings)
 }

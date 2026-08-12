@@ -10,6 +10,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import com.example.data.model.ProxyNode
+import com.example.data.model.SavedCustomSubscription
 import com.example.data.model.ServerLog
 import com.example.data.model.Subscription
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +53,9 @@ interface ProxyNodeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNodes(nodes: List<ProxyNode>)
 
+    @Query("DELETE FROM proxy_nodes WHERE id = :id")
+    suspend fun deleteNodeById(id: Long)
+
     @Query("DELETE FROM proxy_nodes WHERE subscriptionId = :subId")
     suspend fun deleteNodesForSubscription(subId: Long)
 
@@ -77,15 +81,28 @@ interface ServerLogDao {
     suspend fun clearLogs()
 }
 
+@Dao
+interface SavedCustomSubDao {
+    @Query("SELECT * FROM saved_custom_subscriptions ORDER BY createdAt DESC")
+    fun getAllSavedCustomSubs(): Flow<List<SavedCustomSubscription>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSavedCustomSub(sub: SavedCustomSubscription): Long
+
+    @Query("DELETE FROM saved_custom_subscriptions WHERE id = :id")
+    suspend fun deleteSavedCustomSub(id: Long)
+}
+
 @Database(
-    entities = [Subscription::class, ProxyNode::class, ServerLog::class],
-    version = 1,
+    entities = [Subscription::class, ProxyNode::class, ServerLog::class, SavedCustomSubscription::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun proxyNodeDao(): ProxyNodeDao
     abstract fun serverLogDao(): ServerLogDao
+    abstract fun savedCustomSubDao(): SavedCustomSubDao
 
     companion object {
         @Volatile

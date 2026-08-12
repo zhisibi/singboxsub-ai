@@ -1,10 +1,5 @@
 package com.example.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,13 +17,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Lan
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,24 +31,21 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.model.ServerLog
 import com.example.ui.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -62,7 +53,6 @@ import java.util.Locale
 
 @Composable
 fun DashboardScreen(viewModel: MainViewModel) {
-    val context = LocalContext.current
     val isZh by viewModel.isChineseMode.collectAsStateWithLifecycle()
     val isRunning by viewModel.httpServer.isRunning.collectAsStateWithLifecycle()
     val port by viewModel.httpServer.port.collectAsStateWithLifecycle()
@@ -70,25 +60,11 @@ fun DashboardScreen(viewModel: MainViewModel) {
     val requestCount by viewModel.httpServer.requestCount.collectAsStateWithLifecycle()
     val localIp by viewModel.localIp.collectAsStateWithLifecycle()
     val nodes by viewModel.nodes.collectAsStateWithLifecycle()
+    val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
+    val savedCustomSubs by viewModel.savedCustomSubs.collectAsStateWithLifecycle()
     val logs by viewModel.serverLogs.collectAsStateWithLifecycle()
 
     val activeNodeCount = remember(nodes) { nodes.count { it.enabled } }
-
-    var qrModalUrl by remember { mutableStateOf<String?>(null) }
-    var qrModalTitle by remember { mutableStateOf("") }
-    var showCustomSubDialog by remember { mutableStateOf(false) }
-
-    val tokenParam = if (token.isNotEmpty()) "&token=$token" else ""
-
-    val localhostUrl = "http://127.0.0.1:$port/sub?type=singbox$tokenParam"
-    val lanUrl = "http://$localIp:$port/sub?type=singbox$tokenParam"
-
-    val copyToClipboard: (String, String) -> Unit = { text, label ->
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(label, text)
-        clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, if (isZh) "已复制 $label 到剪贴板" else "$label copied to clipboard", Toast.LENGTH_SHORT).show()
-    }
 
     LazyColumn(
         modifier = Modifier
@@ -98,15 +74,16 @@ fun DashboardScreen(viewModel: MainViewModel) {
     ) {
         item {
             Spacer(modifier = Modifier.height(4.dp))
-            // Server Status Hero Card
+            // 1. Server Control & Status Hero Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("server_status_card"),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (isRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                )
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -142,6 +119,22 @@ fun DashboardScreen(viewModel: MainViewModel) {
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (isZh) "局域网监听: http://$localIp:$port" else "LAN Address: http://$localIp:$port",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
@@ -149,21 +142,15 @@ fun DashboardScreen(viewModel: MainViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = if (isZh) "可用节点: $activeNodeCount / ${nodes.size}" else "Active Nodes: $activeNodeCount / ${nodes.size}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = if (isZh) "已处理订阅请求: $requestCount 次" else "Requests Handled: $requestCount",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = if (isZh) "鉴权Token: ${if (token.isBlank()) "未设置" else token}" else "Token: ${if (token.isBlank()) "None" else token}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
                         Button(
                             onClick = { viewModel.toggleServer(port, token) },
+                            shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isRunning) Color(0xFFEF4444) else MaterialTheme.colorScheme.primary
                             ),
@@ -181,100 +168,89 @@ fun DashboardScreen(viewModel: MainViewModel) {
             }
         }
 
-        // Custom Subscription Link Banner
+        // 2. Basic System Overview & Status Info Card Grid
+        item {
+            Text(
+                text = if (isZh) "📊 基础状态与核心信息" else "📊 Basic System Overview",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (isZh) "🎯 专属节点自定义订阅" else "🎯 Custom Subscription Generator",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Stat 1: Nodes
+                        StatTile(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Default.List,
+                            title = if (isZh) "可用节点" else "Active Nodes",
+                            value = "$activeNodeCount / ${nodes.size}",
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
                         )
-                        Text(
-                            text = if (isZh) "勾选指定节点 + 自定义Token 生成专属链接" else "Pick nodes & custom token to generate tailored link",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+
+                        // Stat 2: Subscriptions
+                        StatTile(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Default.RssFeed,
+                            title = if (isZh) "导入订阅源" else "Sub Sources",
+                            value = "${subscriptions.size} 个",
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
                         )
                     }
 
-                    Button(
-                        onClick = { showCustomSubDialog = true },
-                        modifier = Modifier.height(36.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isZh) "去自定义" else "Customize", style = MaterialTheme.typography.labelMedium)
+                        // Stat 3: Custom Subs
+                        StatTile(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Default.Tune,
+                            title = if (isZh) "专属订阅生成" else "Custom Subs",
+                            value = "${savedCustomSubs.size} 条",
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+
+                        // Stat 4: Handled Requests
+                        StatTile(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Default.Dns,
+                            title = if (isZh) "订阅处理请求" else "Requests Handled",
+                            value = "$requestCount 次",
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
                     }
                 }
             }
         }
 
-        // Connections & Links Section Header
-        item {
-            Text(
-                text = if (isZh) "默认全节点订阅地址" else "Default All-Nodes Subscription Links",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(vertical = 2.dp)
-            )
-        }
-
-        // Localhost Link Card
-        item {
-            LinkCard(
-                icon = Icons.Default.Router,
-                title = if (isZh) "本机访问地址 (127.0.0.1)" else "Local Device Link (127.0.0.1)",
-                subtitle = if (isZh) "适用于本手机安装的 Sing-box / Mihomo / NekoBox" else "Use on this phone with Sing-box / Mihomo",
-                url = localhostUrl,
-                isZh = isZh,
-                onCopy = { copyToClipboard(localhostUrl, if (isZh) "本机订阅链接" else "Localhost Link") },
-                onQrCode = {
-                    qrModalUrl = localhostUrl
-                    qrModalTitle = if (isZh) "本机订阅二维码" else "Localhost Subscription QR"
-                }
-            )
-        }
-
-        // LAN WiFi Link Card
-        item {
-            LinkCard(
-                icon = Icons.Default.Lan,
-                title = if (isZh) "局域网共享地址 ($localIp)" else "LAN WiFi Link ($localIp)",
-                subtitle = if (isZh) "同一 WiFi 下共享给电脑、电视或其它手机" else "Share with PC or devices on same WiFi",
-                url = lanUrl,
-                isZh = isZh,
-                onCopy = { copyToClipboard(lanUrl, if (isZh) "局域网订阅链接" else "LAN Link") },
-                onQrCode = {
-                    qrModalUrl = lanUrl
-                    qrModalTitle = if (isZh) "局域网订阅二维码" else "LAN Subscription QR"
-                }
-            )
-        }
-
-        // Access Logs Header
+        // 3. Server Access Logs
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isZh) "服务器访问日志 (${logs.size})" else "Server Access Logs (${logs.size})",
+                    text = if (isZh) "📋 服务器访问日志 (${logs.size})" else "📋 Server Access Logs (${logs.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -291,7 +267,6 @@ fun DashboardScreen(viewModel: MainViewModel) {
             }
         }
 
-        // Access Logs List
         if (logs.isEmpty()) {
             item {
                 Card(
@@ -314,118 +289,49 @@ fun DashboardScreen(viewModel: MainViewModel) {
 
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
-
-    // QR Code Modal Dialog
-    qrModalUrl?.let { url ->
-        QrCodeModal(
-            title = qrModalTitle,
-            url = url,
-            onDismiss = { qrModalUrl = null }
-        )
-    }
-
-    // Custom Sub Dialog
-    if (showCustomSubDialog) {
-        CustomSubDialog(
-            viewModel = viewModel,
-            onDismiss = { showCustomSubDialog = false }
-        )
-    }
 }
 
 @Composable
-fun LinkCard(
+fun StatTile(
+    modifier: Modifier = Modifier,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    subtitle: String,
-    url: String,
-    isZh: Boolean,
-    onCopy: () -> Unit,
-    onQrCode: () -> Unit
+    value: String,
+    containerColor: Color
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
                 Text(
-                    text = url,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(8.dp),
-                    maxLines = 2
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                OutlinedButton(
-                    onClick = onQrCode,
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isZh) "二维码" else "QR Code", style = MaterialTheme.typography.labelSmall)
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Button(
-                    onClick = onCopy,
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isZh) "复制" else "Copy", style = MaterialTheme.typography.labelSmall)
-                }
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
 }
 
 @Composable
-fun LogItemCard(log: com.example.data.model.ServerLog) {
+fun LogItemCard(log: ServerLog) {
     val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val timeStr = remember(log.timestamp) { dateFormat.format(Date(log.timestamp)) }
 

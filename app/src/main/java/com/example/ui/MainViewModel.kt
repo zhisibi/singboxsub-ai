@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.db.AppDatabase
 import com.example.data.model.ProxyNode
+import com.example.data.model.SavedCustomSubscription
 import com.example.data.model.ServerLog
 import com.example.data.model.Subscription
 import com.example.data.parser.SubscriptionParser
@@ -38,6 +39,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val serverLogs: StateFlow<List<ServerLog>> = db.serverLogDao().getRecentLogs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val savedCustomSubs: StateFlow<List<SavedCustomSubscription>> = db.savedCustomSubDao().getAllSavedCustomSubs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _isRefreshing = MutableStateFlow(false)
@@ -125,6 +129,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             current.add(nodeId)
         }
         _selectedNodeIds.value = current
+    }
+
+    fun setSelectedNodeIds(ids: Set<Long>) {
+        _selectedNodeIds.value = ids
     }
 
     fun selectAllNodes() {
@@ -287,6 +295,79 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearAllLogs() {
         viewModelScope.launch(Dispatchers.IO) {
             db.serverLogDao().clearLogs()
+        }
+    }
+
+    fun deleteNode(nodeId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.proxyNodeDao().deleteNodeById(nodeId)
+            _statusMessage.value = if (_isChineseMode.value) "节点已删除" else "Node deleted"
+        }
+    }
+
+    fun deduplicateNodes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allNodes = db.proxyNodeDao().getAllNodes()
+            if (allNodes.isEmpty()) {
+                _statusMessage.value = if (_isChineseMode.value) "暂无节点" else "No nodes to deduplicate"
+                return@launch
+            }
+
+            val seenKeys = mutableSetOf<String>()
+            val idsToDelete = mutableListOf<Long>()
+
+            for (node in allNodes) {
+                val key = if (node.rawUri.isNotBlank()) {
+                    node.rawUri.trim()
+                } else {
+                    "${node.protocol.lowercase()}://${node.uuidOrPassword}@${node.server.lowercase()}:${node.port}${node.path}${node.sni}"
+                }
+
+                if (seenKeys.contains(key)) {
+                    idsToDelete.add(node.id)
+                } else {
+                    seenKeys.add(key)
+                }
+            }
+
+            if (idsToDelete.isNotEmpty()) {
+                idsToDelete.forEach { id ->
+                    db.proxyNodeDao().deleteNodeById(id)
+                }
+                _statusMessage.value = if (_isChineseMode.value) "成功删除 ${idsToDelete.size} 个重复节点" else "Removed ${idsToDelete.size} duplicate nodes"
+            } else {
+                _statusMessage.value = if (_isChineseMode.value) "未发现重复节点" else "No duplicate nodes found"
+            }
+        }
+    }
+
+    fun deleteAllNodes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.proxyNodeDao().deleteAllNodes()
+            _statusMessage.value = if (_isChineseMode.value) "已清空所有节点" else "All nodes deleted"
+        }
+    }
+
+    fun saveCustomSubscription(name: String, format: String, token: String, nodeIds: List<Long>, id: Long = 0) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val subName = if (name.isBlank()) "自定义订阅 (${format.uppercase()})" else name
+            val idsStr = nodeIds.joinToString(",")
+            val customSub = SavedCustomSubscription(
+                id = id,
+                name = subName,
+                format = format,
+                token = token,
+                nodeIds = idsStr
+            )
+            db.savedCustomSubDao().insertSavedCustomSub(customSub)
+            _statusMessage.value = if (_isChineseMode.value) "已保存自定义订阅: $subName" else "Saved custom sub: $subName"
+        }
+    }
+
+    fun deleteCustomSubscription(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.savedCustomSubDao().deleteSavedCustomSub(id)
+            _statusMessage.value = if (_isChineseMode.value) "自定义订阅已删除" else "Custom sub deleted"
         }
     }
 
