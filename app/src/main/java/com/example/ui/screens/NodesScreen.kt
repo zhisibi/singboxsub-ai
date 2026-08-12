@@ -29,12 +29,15 @@ import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +66,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.ProxyNode
 import com.example.ui.MainViewModel
 
+enum class NodeSortMode {
+    DEFAULT,     // 默认顺序
+    PING_ASC,    // 延迟优先 (极速)
+    NAME_ASC,    // 名称排序 (A-Z)
+    PROTOCOL,    // 协议类型
+    ENABLED_FIRST // 启用优先
+}
+
 @Composable
 fun NodesScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
@@ -71,12 +82,14 @@ fun NodesScreen(viewModel: MainViewModel) {
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedProtocol by remember { mutableStateOf("All") }
+    var selectedSortMode by remember { mutableStateOf(NodeSortMode.DEFAULT) }
+    var showSortMenu by remember { mutableStateOf(false) }
     var showDeleteAllConfirm by remember { mutableStateOf(false) }
 
     val protocols = listOf("All", "vless", "vmess", "ss", "trojan", "hysteria2", "socks", "http")
 
-    val filteredNodes = remember(nodes, searchQuery, selectedProtocol) {
-        nodes.filter { node ->
+    val filteredAndSortedNodes = remember(nodes, searchQuery, selectedProtocol, selectedSortMode) {
+        val filtered = nodes.filter { node ->
             val matchesSearch = searchQuery.isBlank() ||
                     node.name.contains(searchQuery, ignoreCase = true) ||
                     node.server.contains(searchQuery, ignoreCase = true)
@@ -85,6 +98,25 @@ fun NodesScreen(viewModel: MainViewModel) {
                     node.protocol.equals(selectedProtocol, ignoreCase = true)
 
             matchesSearch && matchesProtocol
+        }
+
+        when (selectedSortMode) {
+            NodeSortMode.DEFAULT -> filtered
+            NodeSortMode.PING_ASC -> filtered.sortedWith(
+                compareBy<ProxyNode> {
+                    when {
+                        it.pingMs > 0 -> 0
+                        it.pingMs == 0 -> 1
+                        else -> 2
+                    }
+                }.thenBy { if (it.pingMs > 0) it.pingMs else Long.MAX_VALUE }
+                 .thenBy { it.name }
+            )
+            NodeSortMode.NAME_ASC -> filtered.sortedBy { it.name.lowercase() }
+            NodeSortMode.PROTOCOL -> filtered.sortedBy { it.protocol.lowercase() }
+            NodeSortMode.ENABLED_FIRST -> filtered.sortedWith(
+                compareByDescending<ProxyNode> { it.enabled }.thenBy { it.name }
+            )
         }
     }
 
@@ -184,15 +216,70 @@ fun NodesScreen(viewModel: MainViewModel) {
         }
 
         item {
-            Text(
-                text = if (isZh) "解析的节点列表 (${filteredNodes.size} / ${nodes.size})" else "Extracted Nodes (${filteredNodes.size} / ${nodes.size})",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isZh) "解析的节点列表 (${filteredAndSortedNodes.size} / ${nodes.size})" else "Extracted Nodes (${filteredAndSortedNodes.size} / ${nodes.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Box {
+                    OutlinedButton(
+                        onClick = { showSortMenu = true },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("node_sort_button")
+                    ) {
+                        Icon(Icons.Default.Sort, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = when (selectedSortMode) {
+                                NodeSortMode.DEFAULT -> if (isZh) "默认" else "Default"
+                                NodeSortMode.PING_ASC -> if (isZh) "延迟优先" else "Lowest Ping"
+                                NodeSortMode.NAME_ASC -> if (isZh) "名称 A-Z" else "Name A-Z"
+                                NodeSortMode.PROTOCOL -> if (isZh) "协议分类" else "By Protocol"
+                                NodeSortMode.ENABLED_FIRST -> if (isZh) "启用优先" else "Enabled First"
+                            },
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(if (isZh) "⚙️ 默认顺序" else "⚙️ Default Order") },
+                            onClick = { selectedSortMode = NodeSortMode.DEFAULT; showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (isZh) "⚡ 延迟优先 (极速)" else "⚡ Lowest Latency First") },
+                            onClick = { selectedSortMode = NodeSortMode.PING_ASC; showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (isZh) "🔤 名称排序 (A-Z)" else "🔤 Name (A-Z)") },
+                            onClick = { selectedSortMode = NodeSortMode.NAME_ASC; showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (isZh) "🧩 协议类型" else "🧩 Protocol") },
+                            onClick = { selectedSortMode = NodeSortMode.PROTOCOL; showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (isZh) "📌 启用状态优先" else "📌 Enabled First") },
+                            onClick = { selectedSortMode = NodeSortMode.ENABLED_FIRST; showSortMenu = false }
+                        )
+                    }
+                }
+            }
         }
 
-        if (filteredNodes.isEmpty()) {
+        if (filteredAndSortedNodes.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -210,7 +297,7 @@ fun NodesScreen(viewModel: MainViewModel) {
                 }
             }
         } else {
-            items(filteredNodes) { node ->
+            items(filteredAndSortedNodes) { node ->
                 NodeCard(
                     node = node,
                     isZh = isZh,

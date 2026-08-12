@@ -437,12 +437,22 @@ fun DefaultSubCard(
     onCopyLan: () -> Unit,
     onQrCode: () -> Unit
 ) {
+    val cardBgColor = when (formatType) {
+        "singbox" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        "mihomo" -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+        else -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
+    }
     val avatarBgColor = when (formatType) {
+        "singbox" -> MaterialTheme.colorScheme.primary
+        "mihomo" -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    val tagBgColor = when (formatType) {
         "singbox" -> MaterialTheme.colorScheme.primaryContainer
         "mihomo" -> MaterialTheme.colorScheme.secondaryContainer
         else -> MaterialTheme.colorScheme.tertiaryContainer
     }
-    val avatarIconColor = when (formatType) {
+    val tagTextColor = when (formatType) {
         "singbox" -> MaterialTheme.colorScheme.onPrimaryContainer
         "mihomo" -> MaterialTheme.colorScheme.onSecondaryContainer
         else -> MaterialTheme.colorScheme.onTertiaryContainer
@@ -456,7 +466,7 @@ fun DefaultSubCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = cardBgColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
@@ -477,14 +487,14 @@ fun DefaultSubCard(
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = avatarBgColor,
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(42.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = formatIcon,
                                 contentDescription = null,
-                                tint = avatarIconColor,
-                                modifier = Modifier.size(20.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
@@ -510,13 +520,13 @@ fun DefaultSubCard(
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = avatarBgColor
+                    color = tagBgColor
                 ) {
                     Text(
                         text = formatTag,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = avatarIconColor,
+                        color = tagTextColor,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -624,7 +634,7 @@ fun SavedCustomSubCard(
             .fillMaxWidth()
             .clickable { onEdit() },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
@@ -644,15 +654,15 @@ fun SavedCustomSubCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(40.dp)
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(42.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(20.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
@@ -806,7 +816,7 @@ fun ImportedSubCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
@@ -826,15 +836,15 @@ fun ImportedSubCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        modifier = Modifier.size(40.dp)
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(42.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = if (subscription.url.isBlank()) Icons.Default.Link else Icons.Default.RssFeed,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.size(20.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }

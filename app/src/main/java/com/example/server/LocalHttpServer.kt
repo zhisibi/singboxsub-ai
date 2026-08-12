@@ -135,9 +135,23 @@ class LocalHttpServer(private val context: Context) {
                 val queryParams = if (uriParts.size > 1) parseQueryParams(uriParts[1]) else emptyMap()
 
                 // Token check
-                val reqToken = queryParams["token"] ?: ""
-                val currentSecret = _secretToken.value
-                if (currentSecret.isNotEmpty() && reqToken != currentSecret) {
+                val reqToken = queryParams["token"]?.trim() ?: ""
+                val currentSecret = _secretToken.value.trim()
+
+                val isAuthorized = when {
+                    currentSecret.isEmpty() -> true
+                    reqToken == currentSecret -> true
+                    else -> {
+                        val customSubTokens = try {
+                            db.savedCustomSubDao().getAllSavedCustomSubsList().mapNotNull { sub -> sub.token.trim().ifBlank { null } }
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                        reqToken.isNotEmpty() && customSubTokens.contains(reqToken)
+                    }
+                }
+
+                if (!isAuthorized) {
                     sendRawResponse(outputStream, 403, "Forbidden", "text/plain; charset=UTF-8", "Error: Invalid Security Token / 鉴权Token错误")
                     logAccess(clientIp, path, "unauthorized", userAgent, 403)
                     socket.close()

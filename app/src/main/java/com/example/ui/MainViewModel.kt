@@ -87,6 +87,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateLocalIp()
         val savedPort = prefs.getInt("server_port", 8080)
         val savedToken = prefs.getString("server_token", "") ?: ""
+        if (savedToken.isNotBlank()) {
+            _customToken.value = savedToken
+        }
         httpServer.startServer(port = savedPort, secretToken = savedToken)
     }
 
@@ -160,6 +163,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleServer(port: Int = 8080, token: String = "") {
         prefs.edit().putInt("server_port", port).putString("server_token", token).apply()
+        if (token.isNotBlank()) {
+            setCustomToken(token)
+        }
         if (httpServer.isRunning.value) {
             httpServer.stopServer()
             _statusMessage.value = if (_isChineseMode.value) "局域网服务器已停止" else "Local LAN server stopped"

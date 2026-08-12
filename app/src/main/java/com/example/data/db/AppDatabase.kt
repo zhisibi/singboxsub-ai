@@ -86,6 +86,9 @@ interface SavedCustomSubDao {
     @Query("SELECT * FROM saved_custom_subscriptions ORDER BY createdAt DESC")
     fun getAllSavedCustomSubs(): Flow<List<SavedCustomSubscription>>
 
+    @Query("SELECT * FROM saved_custom_subscriptions ORDER BY createdAt DESC")
+    suspend fun getAllSavedCustomSubsList(): List<SavedCustomSubscription>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSavedCustomSub(sub: SavedCustomSubscription): Long
 
