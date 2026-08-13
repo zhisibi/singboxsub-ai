@@ -438,6 +438,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
         QrCodeModal(
             title = qrModalTitle,
             url = url,
+            isZh = isZh,
             onDismiss = { qrModalUrl = null }
         )
     }

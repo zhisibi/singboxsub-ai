@@ -423,6 +423,7 @@ fun CustomSubDialog(
         QrCodeModal(
             title = if (isZh) "专属订阅二维码" else "Custom Subscription QR Code",
             url = qrUrl,
+            isZh = isZh,
             onDismiss = { showQrModal = false }
         )
     }
