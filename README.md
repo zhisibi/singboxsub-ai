@@ -7,10 +7,10 @@
 ## 🌟 核心功能特性
 
 ### 1. 🚀 多协议订阅转换引擎
-- **Sing-Box 1.14+ 原生支持**：生成标准且符合最新规范的 `Sing-Box JSON` 配置，完美适配移动端与桌面端 Sing-Box 客户端。
+- **Sing-Box 1.14+ 原生支持**：生成标准且符合最新规范的 `Sing-Box JSON` 配置，完美适配移动端与桌面端 Sing-Box 客户端。全面支持标准的 `sing-box://import-remote-profile?url=...` 快捷 scheme 导入格式与 QR 二维码。
 - **Mihomo / Clash Meta YAML**：导出兼容 Clash Meta 及 Mihomo 内核的标准 `YAML` 配置文件。
 - **Base64 通用节点订阅**：支持导出包含 `vless://`, `vmess://`, `ss://`, `trojan://`, `hysteria2://`, `socks://`, `http://` 等协议的通用 Base64 订阅文本。
-- **混合订阅一键导入**：支持解析远程 HTTP/HTTPS 订阅链接、剪贴板多协议 URI 以及复杂 JSON/YAML 格式文本。
+- **混合订阅与 Scheme 链接一键导入**：支持解析远程 HTTP/HTTPS 订阅链接、`sing-box://`、`clash://` 等客户端快捷 scheme 链接、剪贴板多协议 URI 以及复杂 JSON/YAML 格式文本。
 
 ### 2. 🌐 高性能局域网 HTTP 服务器
 - **零配置开箱即用**：内置轻量级并发 HTTP 服务，支持同一局域网下的手机、电视、电脑或路由器直接拉取订阅配置。

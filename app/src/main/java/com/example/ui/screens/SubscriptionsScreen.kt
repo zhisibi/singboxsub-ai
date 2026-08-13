@@ -238,7 +238,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                         if (customSub.format == "singbox") {
                             val encodedUrl = URLEncoder.encode(url, "UTF-8")
                             val encodedName = URLEncoder.encode(customSub.name, "UTF-8")
-                            qrModalUrl = "sing-box://import-remote-config?url=$encodedUrl#$encodedName"
+                            qrModalUrl = "sing-box://import-remote-profile?url=$encodedUrl#$encodedName"
                         } else {
                             qrModalUrl = url
                         }
@@ -277,7 +277,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                 onQrCode = {
                     val encodedUrl = URLEncoder.encode(singboxLanUrl, "UTF-8")
                     val encodedName = URLEncoder.encode("Sing-Box", "UTF-8")
-                    qrModalUrl = "sing-box://import-remote-config?url=$encodedUrl#$encodedName"
+                    qrModalUrl = "sing-box://import-remote-profile?url=$encodedUrl#$encodedName"
                     qrModalTitle = if (isZh) "Sing-Box 局域网订阅二维码" else "Sing-Box LAN QR Code"
                 }
             )

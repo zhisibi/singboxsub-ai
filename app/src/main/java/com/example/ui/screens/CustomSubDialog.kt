@@ -416,7 +416,7 @@ fun CustomSubDialog(
         val qrUrl = if (selectedFormat == "singbox") {
             val encodedUrl = URLEncoder.encode(generatedSubUrl, "UTF-8")
             val encodedName = URLEncoder.encode(customNameInput.ifBlank { "Sing-Box" }, "UTF-8")
-            "sing-box://import-remote-config?url=$encodedUrl#$encodedName"
+            "sing-box://import-remote-profile?url=$encodedUrl#$encodedName"
         } else {
             generatedSubUrl
         }

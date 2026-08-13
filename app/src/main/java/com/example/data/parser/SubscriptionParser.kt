@@ -521,4 +521,85 @@ object SubscriptionParser {
             str
         }
     }
+
+    /**
+     * Extracts direct HTTP/HTTPS subscription URL and optional name from custom scheme links like:
+     * - sing-box://import-remote-profile?url=http%3A%2F%2F...#Name
+     * - sing-box://import-remote-config?url=http%3A%2F%2F...#Name
+     * - clash://install-config?url=...
+     * - v2rayn://install-config?url=...
+     * - sub://<base64_or_url>
+     */
+    fun extractSubscriptionUrlAndName(input: String): Pair<String, String?> {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return Pair("", null)
+
+        // Direct HTTP or HTTPS URL
+        if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            val nameFromHash = if (trimmed.contains("#")) {
+                try { URLDecoder.decode(trimmed.substringAfter("#"), "UTF-8") } catch (e: Exception) { null }
+            } else null
+            return Pair(trimmed, nameFromHash)
+        }
+
+        // Custom scheme links: sing-box://, singbox://, clash://, v2rayn://, sn://, sub://
+        val lower = trimmed.lowercase()
+        if (lower.startsWith("sing-box://") || lower.startsWith("singbox://") ||
+            lower.startsWith("clash://") || lower.startsWith("v2rayn://") ||
+            lower.startsWith("sn://") || lower.startsWith("sub://")) {
+
+            // 1. Check for url= parameter in query string
+            if (trimmed.contains("url=", ignoreCase = true)) {
+                val urlParam = trimmed.substringAfter("url=").substringBefore("&").substringBefore("#")
+                if (urlParam.isNotBlank()) {
+                    val decodedUrl = try { URLDecoder.decode(urlParam, "UTF-8") } catch (e: Exception) { urlParam }
+                    if (decodedUrl.startsWith("http://", ignoreCase = true) || decodedUrl.startsWith("https://", ignoreCase = true)) {
+                        var name: String? = null
+                        if (trimmed.contains("#")) {
+                            val fragment = trimmed.substringAfter("#")
+                            if (fragment.isNotBlank()) {
+                                name = try { URLDecoder.decode(fragment, "UTF-8") } catch (e: Exception) { fragment }
+                            }
+                        } else if (trimmed.contains("name=", ignoreCase = true)) {
+                            val nameParam = trimmed.substringAfter("name=").substringBefore("&").substringBefore("#")
+                            if (nameParam.isNotBlank()) {
+                                name = try { URLDecoder.decode(nameParam, "UTF-8") } catch (e: Exception) { nameParam }
+                            }
+                        }
+                        return Pair(decodedUrl, name)
+                    }
+                }
+            }
+
+            // 2. sub:// format (base64 or direct HTTP URL)
+            if (lower.startsWith("sub://")) {
+                val afterSub = trimmed.removePrefix("sub://").removePrefix("SUB://")
+                val decoded = tryDecodeBase64(afterSub)
+                if (decoded.startsWith("http://", ignoreCase = true) || decoded.startsWith("https://", ignoreCase = true)) {
+                    return Pair(decoded, null)
+                }
+                if (afterSub.startsWith("http://", ignoreCase = true) || afterSub.startsWith("https://", ignoreCase = true)) {
+                    return Pair(afterSub, null)
+                }
+            }
+        }
+
+        // Fallback: search for embedded http:// or https:// if user pasted text containing a URL
+        val httpIdx = trimmed.indexOf("http://", ignoreCase = true)
+        val httpsIdx = trimmed.indexOf("https://", ignoreCase = true)
+        val idx = when {
+            httpIdx >= 0 && httpsIdx >= 0 -> minOf(httpIdx, httpsIdx)
+            httpIdx >= 0 -> httpIdx
+            httpsIdx >= 0 -> httpsIdx
+            else -> -1
+        }
+        if (idx >= 0) {
+            val candidate = trimmed.substring(idx).split("\\s+".toRegex())[0]
+            if (candidate.startsWith("http://", ignoreCase = true) || candidate.startsWith("https://", ignoreCase = true)) {
+                return Pair(candidate, null)
+            }
+        }
+
+        return Pair("", null)
+    }
 }

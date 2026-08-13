@@ -193,7 +193,7 @@ fun AddSubscriptionDialog(
                     value = urlOrContent,
                     onValueChange = { urlOrContent = it },
                     label = { Text(if (isZh) "节点源地址 / 链接 / 原始节点内容" else "Node Source URL / Links / Content") },
-                    placeholder = { Text(if (isZh) "支持粘贴: http://... 订阅链接，或者 vless://, vmess://, ss://, trojan://, hy2:// 单/多条节点 URI 或 Base64 / JSON" else "Paste http:// URL, or vless://, vmess://, ss://, trojan://, hy2:// URIs...") },
+                    placeholder = { Text(if (isZh) "支持粘贴: http(s):// 订阅链接、sing-box://, clash://, v2rayn:// 快捷 scheme 导入链接，或 vless://, vmess://, ss://, trojan://, hy2:// 等节点 URI / Base64 / JSON" else "Paste http(s):// URL, sing-box://, clash:// scheme links, or vless://, vmess://, ss://, trojan://, hy2:// URIs...") },
                     leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp)) },
                     minLines = 8,
                     maxLines = 14,

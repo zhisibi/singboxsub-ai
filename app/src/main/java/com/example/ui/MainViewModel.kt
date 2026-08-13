@@ -180,17 +180,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             _isRefreshing.value = true
             try {
-                val isUrl = urlOrContent.startsWith("http://", ignoreCase = true) ||
-                            urlOrContent.startsWith("https://", ignoreCase = true)
+                val (extractedUrl, extractedName) = SubscriptionParser.extractSubscriptionUrlAndName(urlOrContent)
+                val isUrl = extractedUrl.isNotBlank()
+                val targetUrl = if (isUrl) extractedUrl else urlOrContent
 
-                val subName = if (name.isBlank()) (if (isUrl) "订阅链接 ${System.currentTimeMillis() % 1000}" else "自定义节点") else name
-                val initialSub = Subscription(name = subName, url = if (isUrl) urlOrContent else "")
+                val subName = when {
+                    name.isNotBlank() -> name
+                    !extractedName.isNullOrBlank() -> extractedName
+                    isUrl -> "订阅链接 ${System.currentTimeMillis() % 1000}"
+                    else -> "自定义节点"
+                }
+                val initialSub = Subscription(name = subName, url = if (isUrl) targetUrl else "")
 
                 val subId = db.subscriptionDao().insertSubscription(initialSub)
 
                 var rawText = urlOrContent
                 if (isUrl) {
-                    rawText = fetchUrlContent(urlOrContent)
+                    rawText = fetchUrlContent(targetUrl)
                 }
 
                 val parsedNodes = SubscriptionParser.parseContent(rawText, subId)
@@ -209,7 +215,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 )
 
-                _statusMessage.value = if (_isChineseMode.value) "成功导入 ${parsedNodes.size} 个节点" else "Successfully imported ${parsedNodes.size} nodes"
+                if (parsedNodes.isEmpty()) {
+                    _statusMessage.value = if (_isChineseMode.value) "已导入订阅，但未解析到有效节点，请检查链接或配置内容" else "Imported subscription, but no valid nodes parsed"
+                } else {
+                    _statusMessage.value = if (_isChineseMode.value) "成功导入 ${parsedNodes.size} 个节点" else "Successfully imported ${parsedNodes.size} nodes"
+                }
             } catch (e: Exception) {
                 _statusMessage.value = if (_isChineseMode.value) "导入失败: ${e.localizedMessage}" else "Error importing: ${e.localizedMessage}"
             } finally {
