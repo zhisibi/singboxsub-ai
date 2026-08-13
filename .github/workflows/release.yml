@@ -4,7 +4,21 @@ on:
   push:
     tags:
       - 'v*'
+      - '[0-9]+.[0-9]+.*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag Name (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_name:
+        description: 'Release Title'
+        required: false
+        default: 'SingBoxSub Release v1.0.0'
+      prerelease:
+        description: 'Mark as Pre-release'
+        type: boolean
+        default: false
 
 jobs:
   release:
@@ -19,6 +33,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set Release Tag and Name
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+            NAME="${{ github.event.inputs.release_name }}"
+            if [ -z "$NAME" ]; then NAME="SingBoxSub Release $TAG"; fi
+          else
+            TAG="${github.ref_name}"
+            NAME="SingBoxSub Release $TAG"
+          fi
+          echo "TAG_NAME=$TAG" >> $GITHUB_ENV
+          echo "RELEASE_NAME=$NAME" >> $GITHUB_ENV
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -40,35 +67,42 @@ jobs:
 
       - name: Build Release APK & Bundle
         run: |
-          gradle assembleRelease bundleRelease --stacktrace || gradle assembleDebug --stacktrace
+          gradle assembleRelease bundleRelease --stacktrace
 
       - name: Prepare Release Artifacts
         run: |
           mkdir -p release-artifacts/
           if [ -d "app/build/outputs/apk/release" ]; then
-            cp app/build/outputs/apk/release/*.apk release-artifacts/
-          fi
-          if [ -d "app/build/outputs/apk/debug" ]; then
-            cp app/build/outputs/apk/debug/*.apk release-artifacts/
+            for f in app/build/outputs/apk/release/*.apk; do
+              if [ -f "$f" ]; then
+                cp "$f" "release-artifacts/SingBoxSub-${TAG_NAME}.apk"
+              fi
+            done
           fi
           if [ -d "app/build/outputs/bundle/release" ]; then
-            cp app/build/outputs/bundle/release/*.aab release-artifacts/
+            for f in app/build/outputs/bundle/release/*.aab; do
+              if [ -f "$f" ]; then
+                cp "$f" "release-artifacts/SingBoxSub-${TAG_NAME}.aab"
+              fi
+            done
           fi
 
       - name: Upload Release Artifacts to Workflow Run
         uses: actions/upload-artifact@v4
         with:
-          name: SingBoxSub-Release-Build
+          name: SingBoxSub-${{ env.TAG_NAME }}-Build
           path: release-artifacts/*
           retention-days: 30
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.RELEASE_NAME }}
           files: release-artifacts/*
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ github.event.inputs.prerelease || false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

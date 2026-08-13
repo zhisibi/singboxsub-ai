@@ -90,6 +90,24 @@
 
 ---
 
+## 📦 发布与 Releases 自动化 (Publishing Releases)
+
+本项目内置了 GitHub Actions 自动化发布工作流 (`.github/workflows/release.yml`)，支持以下两种方式自动生成并发布 Release：
+
+1. **推送 Tag 自动发布**：
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+   工作流会自动打包 Release APK (`SingBoxSub-v1.0.0.apk`) 与 AAB，并在 GitHub 仓库的 **Releases** 页面自动创建发布版本及 Release Notes。
+
+2. **GitHub 网页手动一键发布**：
+   - 进入 GitHub 仓库页面的 **Actions** 标签页。
+   - 在左侧选择 **Build & Publish Release** 工作流。
+   - 点击 **Run workflow** 按钮，输入版本号 Tag（如 `v1.0.0`）和发布标题，点击运行即可一键生成 Release 发布！
+
+---
+
 ## 📄 开源许可 (License)
 
 本项目基于 [MIT License](LICENSE) 许可协议开源。
