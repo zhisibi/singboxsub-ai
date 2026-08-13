@@ -91,7 +91,7 @@ sealed class NavigationTab(val route: String, val titleEn: String, val titleZh: 
     object Server : NavigationTab("server", "Dashboard", "首页", Icons.Default.Dns)
     object Subscriptions : NavigationTab("subscriptions", "Subscriptions", "订阅列表", Icons.Default.RssFeed)
     object Nodes : NavigationTab("nodes", "Nodes", "节点列表", Icons.Default.List)
-    object Config : NavigationTab("config", "Converter Rules", "配置转换", Icons.Default.Settings)
+    object Config : NavigationTab("settings", "Settings", "设置", Icons.Default.Settings)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -226,30 +226,6 @@ fun MainAppScreen(viewModel: MainViewModel) {
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleLarge
                         )
-                    },
-                    actions = {
-                        // Wallpaper Picker Button
-                        IconButton(onClick = { showWallpaperDialog = true }) {
-                            Icon(
-                                Icons.Default.Image,
-                                contentDescription = "Wallpaper Settings",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        // Language Toggle Switcher Button ("中 / EN")
-                        OutlinedButton(
-                            onClick = { viewModel.toggleLanguage() },
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isZh) "中" else "EN",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = if (wallpaperType == "None") MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),

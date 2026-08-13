@@ -90,6 +90,7 @@ fun NodesScreen(viewModel: MainViewModel) {
     var selectedSortMode by remember { mutableStateOf(NodeSortMode.DEFAULT) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showDeleteAllConfirm by remember { mutableStateOf(false) }
+    var showDeleteInvalidConfirm by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
 
     val protocols = listOf("All", "vless", "vmess", "ss", "trojan", "hysteria2", "socks", "http")
@@ -137,16 +138,17 @@ fun NodesScreen(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item { Spacer(modifier = Modifier.height(4.dp)) }
+
         // Top Item 1: Import Node Source Entry Bar (Styled matching OutlinedTextField search box)
         item {
-            Spacer(modifier = Modifier.height(4.dp))
             Surface(
                 onClick = { showImportDialog = true },
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("import_node_source_bar")
@@ -243,6 +245,17 @@ fun NodesScreen(viewModel: MainViewModel) {
                     Icon(Icons.Default.FilterAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(if (isZh) "一键去重复" else "Deduplicate", style = MaterialTheme.typography.labelSmall)
+                }
+
+                // Delete Invalid Nodes Button
+                OutlinedButton(
+                    onClick = { showDeleteInvalidConfirm = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isZh) "删除无效节点" else "Delete Invalid", style = MaterialTheme.typography.labelSmall)
                 }
 
                 // Delete All Button
@@ -385,6 +398,31 @@ fun NodesScreen(viewModel: MainViewModel) {
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 
+    // Delete Invalid Nodes Confirmation Dialog
+    if (showDeleteInvalidConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteInvalidConfirm = false },
+            title = { Text(if (isZh) "确认删除无效节点？" else "Delete Invalid Nodes?") },
+            text = { Text(if (isZh) "此操作将清理所有测试失败或超时的节点 (Ping < 0ms)，无法撤销。" else "This action will remove all nodes that timed out or failed latency test.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteInvalidNodes()
+                        showDeleteInvalidConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(if (isZh) "确认清理" else "Delete Invalid")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteInvalidConfirm = false }) {
+                    Text(if (isZh) "取消" else "Cancel")
+                }
+            }
+        )
+    }
+
     // Delete All Confirmation Dialog
     if (showDeleteAllConfirm) {
         AlertDialog(
@@ -439,9 +477,10 @@ fun NodeCard(
             .testTag("node_card_${node.id}"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -496,26 +535,7 @@ fun NodeCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Address Box
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "${node.server}:${node.port}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(8.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Footer Status & Action Row
             Row(

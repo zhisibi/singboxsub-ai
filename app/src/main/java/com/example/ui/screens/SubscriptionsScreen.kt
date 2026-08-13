@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,7 +34,9 @@ import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -41,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import java.net.URLEncoder
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -77,6 +81,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
     var showAddSourceDialog by remember { mutableStateOf(false) }
     var showCustomSubDialog by remember { mutableStateOf(false) }
     var subToEdit by remember { mutableStateOf<SavedCustomSubscription?>(null) }
+    var subToDelete by remember { mutableStateOf<Subscription?>(null) }
 
     var qrModalUrl by remember { mutableStateOf<String?>(null) }
     var qrModalTitle by remember { mutableStateOf("") }
@@ -94,36 +99,9 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            // Top Action Header Toolbar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isZh) "🔗 订阅链接管理中心" else "🔗 Subscriptions Hub",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                OutlinedButton(
-                    onClick = { showAddSourceDialog = true },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .height(36.dp)
-                        .testTag("add_sub_source_button")
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isZh) "导入节点源" else "Import Nodes", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
+        item { Spacer(modifier = Modifier.height(4.dp)) }
 
         // Action Hero Banner Card for Creating Custom Subscription
         item {
@@ -137,9 +115,10 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                     .testTag("create_custom_sub_card"),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = Color.Transparent
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -256,7 +235,13 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                     onCopyLocal = { url -> copyToClipboard(url, "${customSub.name} (Local)") },
                     onCopyLan = { url -> copyToClipboard(url, "${customSub.name} (LAN)") },
                     onQrCode = { url ->
-                        qrModalUrl = url
+                        if (customSub.format == "singbox") {
+                            val encodedUrl = URLEncoder.encode(url, "UTF-8")
+                            val encodedName = URLEncoder.encode(customSub.name, "UTF-8")
+                            qrModalUrl = "sing-box://import-remote-config?url=$encodedUrl#$encodedName"
+                        } else {
+                            qrModalUrl = url
+                        }
                         qrModalTitle = "${customSub.name} 二维码"
                     },
                     onDelete = { viewModel.deleteCustomSubscription(customSub.id) }
@@ -283,14 +268,16 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                 formatTag = "SING-BOX 1.14+",
                 formatType = "singbox",
                 title = if (isZh) "Sing-Box 官方JSON 订阅" else "Sing-Box Official JSON Sub",
-                subtitle = if (isZh) "全节点 • 包含全新 Dns.Servers & RuleSet" else "All Nodes • Latest Sing-Box DNS & RuleSet schemas",
+                subtitle = "",
                 localUrl = singboxLocalUrl,
                 lanUrl = singboxLanUrl,
                 isZh = isZh,
                 onCopyLocal = { copyToClipboard(singboxLocalUrl, "Sing-Box Local Link") },
                 onCopyLan = { copyToClipboard(singboxLanUrl, "Sing-Box LAN Link") },
                 onQrCode = {
-                    qrModalUrl = singboxLanUrl
+                    val encodedUrl = URLEncoder.encode(singboxLanUrl, "UTF-8")
+                    val encodedName = URLEncoder.encode("Sing-Box", "UTF-8")
+                    qrModalUrl = "sing-box://import-remote-config?url=$encodedUrl#$encodedName"
                     qrModalTitle = if (isZh) "Sing-Box 局域网订阅二维码" else "Sing-Box LAN QR Code"
                 }
             )
@@ -304,7 +291,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                 formatTag = "MIHOMO / CLASH",
                 formatType = "mihomo",
                 title = if (isZh) "Mihomo / Clash YAML 订阅" else "Mihomo / Clash Meta YAML Sub",
-                subtitle = if (isZh) "全节点 • 兼容 Clash Verge, NekoBox, Shadowrocket" else "All Nodes • Compatible with Clash Verge, NekoBox & Shadowrocket",
+                subtitle = "",
                 localUrl = mihomoLocalUrl,
                 lanUrl = mihomoLanUrl,
                 isZh = isZh,
@@ -325,7 +312,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                 formatTag = "BASE64 通用",
                 formatType = "base64",
                 title = if (isZh) "Base64 通用节点订阅" else "Base64 Universal Sub",
-                subtitle = if (isZh) "全节点 • 适配 v2rayNG, Shadowrocket, PassWall" else "All Nodes • Standard base64 encoded node URI list",
+                subtitle = "",
                 localUrl = base64LocalUrl,
                 lanUrl = base64LanUrl,
                 isZh = isZh,
@@ -384,7 +371,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                     subscription = sub,
                     isZh = isZh,
                     onRefresh = { viewModel.refreshSubscription(sub) },
-                    onDelete = { viewModel.deleteSubscription(sub.id) }
+                    onDelete = { subToDelete = sub }
                 )
             }
         }
@@ -416,6 +403,36 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
         )
     }
 
+    // Delete Confirmation Dialog
+    subToDelete?.let { sub ->
+        AlertDialog(
+            onDismissRequest = { subToDelete = null },
+            title = { Text(if (isZh) "确认删除订阅？" else "Confirm Delete") },
+            text = {
+                Text(
+                    if (isZh) "确定要删除订阅源「${sub.name}」及其关联的所有节点吗？此操作无法撤销。"
+                    else "Are you sure you want to delete '${sub.name}' and all its nodes? This action cannot be undone."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteSubscription(sub.id)
+                        subToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(if (isZh) "确认删除" else "Delete")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { subToDelete = null }) {
+                    Text(if (isZh) "取消" else "Cancel")
+                }
+            }
+        )
+    }
+
     // QR Code Modal Dialog
     qrModalUrl?.let { url ->
         QrCodeModal(
@@ -440,9 +457,9 @@ fun DefaultSubCard(
     onQrCode: () -> Unit
 ) {
     val cardBgColor = when (formatType) {
-        "singbox" -> MaterialTheme.colorScheme.primaryContainer
-        "mihomo" -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.tertiaryContainer
+        "singbox" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+        "mihomo" -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)
+        else -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)
     }
     val avatarBgColor = when (formatType) {
         "singbox" -> MaterialTheme.colorScheme.primary
@@ -469,7 +486,8 @@ fun DefaultSubCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardBgColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -509,12 +527,14 @@ fun DefaultSubCard(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (subtitle.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
@@ -530,32 +550,6 @@ fun DefaultSubCard(
                         fontWeight = FontWeight.Bold,
                         color = tagTextColor,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Address Box
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Text(
-                        text = if (isZh) "局域网订阅地址:" else "LAN Sub Address:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = lanUrl,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -592,7 +586,7 @@ fun DefaultSubCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                Button(
+                OutlinedButton(
                     onClick = onCopyLan,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.height(36.dp)
@@ -638,8 +632,9 @@ fun SavedCustomSubCard(
             .fillMaxWidth()
             .clickable { onEdit() },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -734,32 +729,6 @@ fun SavedCustomSubCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Address Box
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Text(
-                        text = if (isZh) "专属局域网订阅地址:" else "Custom LAN Sub Address:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = lanUrl,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
             // Footer Action Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -790,14 +759,14 @@ fun SavedCustomSubCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                Button(
+                OutlinedButton(
                     onClick = { onCopyLan(lanUrl) },
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.height(36.dp)
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isZh) "复制局域网" else "LAN", style = MaterialTheme.typography.labelSmall)
+                    Text(if (isZh) "复制局域网" else "Copy LAN", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -820,8 +789,9 @@ fun ImportedSubCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -860,14 +830,6 @@ fun ImportedSubCard(
                             text = subscription.name,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (subscription.url.isBlank()) (if (isZh) "手动输入的节点" else "Manual pasted nodes") else subscription.url,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

@@ -15,7 +15,7 @@ object SubscriptionParser {
 
         // 1. Try Base64 decoding first
         val decodedBase64 = tryDecodeBase64(trimmed)
-        val contentToParse = if (decodedBase64.lines().size > 1 || decodedBase64.contains("://")) {
+        val contentToParse = if (decodedBase64.lines().size > 1 || decodedBase64.contains("://") || decodedBase64.contains("name:") || decodedBase64.contains("proxies:")) {
             decodedBase64
         } else {
             trimmed
@@ -25,6 +25,12 @@ object SubscriptionParser {
         if (contentToParse.startsWith("{")) {
             val jsonNodes = parseSingBoxJson(contentToParse, subscriptionId)
             if (jsonNodes.isNotEmpty()) return jsonNodes
+        }
+
+        // 2.5. Try Clash YAML format
+        if (contentToParse.contains("proxies:") || (contentToParse.contains("name:") && contentToParse.contains("server:"))) {
+            val yamlNodes = parseClashYaml(contentToParse, subscriptionId)
+            if (yamlNodes.isNotEmpty()) return yamlNodes
         }
 
         // 3. Try Line-by-line URI format
@@ -39,6 +45,92 @@ object SubscriptionParser {
             }
         }
 
+        return nodes
+    }
+
+    private fun parseClashYaml(yamlStr: String, subscriptionId: Long): List<ProxyNode> {
+        val nodes = mutableListOf<ProxyNode>()
+        try {
+            val lines = yamlStr.lines()
+            var inProxies = false
+            var currentProxyProps = mutableMapOf<String, String>()
+
+            fun flushProxy() {
+                if (currentProxyProps.isNotEmpty()) {
+                    val name = currentProxyProps["name"] ?: "Clash Node"
+                    val type = currentProxyProps["type"] ?: "ss"
+                    val server = currentProxyProps["server"] ?: ""
+                    val port = currentProxyProps["port"]?.toIntOrNull() ?: 443
+                    if (server.isNotBlank()) {
+                        val password = currentProxyProps["password"] ?: currentProxyProps["uuid"] ?: currentProxyProps["passwd"] ?: ""
+                        val cipher = currentProxyProps["cipher"] ?: "aes-256-gcm"
+                        val sni = currentProxyProps["sni"] ?: currentProxyProps["servername"] ?: ""
+                        val tls = currentProxyProps["tls"]?.toBoolean() ?: (type == "vless" || type == "trojan" || type == "hysteria2" || type == "tuic")
+                        val insecure = currentProxyProps["skip-cert-verify"]?.toBoolean() ?: false
+
+                        val validTypes = setOf("ss", "ssr", "vmess", "vless", "trojan", "hysteria", "hysteria2", "hy2", "socks5", "socks", "http", "snell", "tuic", "wireguard", "shadowsocks")
+                        if (validTypes.contains(type.lowercase()) && server.isNotBlank() && !server.contains("/") && !server.contains("://")) {
+                            val password = currentProxyProps["password"] ?: currentProxyProps["uuid"] ?: currentProxyProps["passwd"] ?: ""
+                            val cipher = currentProxyProps["cipher"] ?: "aes-256-gcm"
+                            val sni = currentProxyProps["sni"] ?: currentProxyProps["servername"] ?: ""
+                            val tls = currentProxyProps["tls"]?.toBoolean() ?: (type == "vless" || type == "trojan" || type == "hysteria2" || type == "tuic")
+                            val insecure = currentProxyProps["skip-cert-verify"]?.toBoolean() ?: false
+
+                            nodes.add(
+                                ProxyNode(
+                                    subscriptionId = subscriptionId,
+                                    name = name,
+                                    protocol = type,
+                                    server = server,
+                                    port = port,
+                                    uuidOrPassword = password,
+                                    cipher = cipher,
+                                    tls = tls,
+                                    sni = sni,
+                                    allowInsecure = insecure
+                                )
+                            )
+                        }
+                    }
+                    currentProxyProps.clear()
+                }
+            }
+
+            for (rawLine in lines) {
+                val line = rawLine.trim()
+                if (line.startsWith("proxies:")) {
+                    inProxies = true
+                    continue
+                }
+                if (inProxies) {
+                    if (line.startsWith("proxy-groups:") || line.startsWith("rules:") || line.startsWith("rule-providers:")) {
+                        flushProxy()
+                        inProxies = false
+                        break
+                    }
+                    if (line.startsWith("- ")) {
+                        flushProxy()
+                        val contentAfterDash = line.removePrefix("- ").trim()
+                        if (contentAfterDash.contains(":")) {
+                            val kv = contentAfterDash.split(":", limit = 2)
+                            if (kv.size == 2) {
+                                currentProxyProps[kv[0].trim().lowercase()] = kv[1].trim().removeSurrounding("\"").removeSurrounding("'")
+                            }
+                        }
+                    } else if (line.contains(":") && !line.startsWith("#")) {
+                        val kv = line.split(":", limit = 2)
+                        if (kv.size == 2) {
+                            val key = kv[0].trim().lowercase()
+                            val value = kv[1].trim().removeSurrounding("\"").removeSurrounding("'")
+                            currentProxyProps[key] = value
+                        }
+                    }
+                }
+            }
+            flushProxy()
+        } catch (e: Exception) {
+            // ignore
+        }
         return nodes
     }
 
@@ -286,36 +378,60 @@ object SubscriptionParser {
     }
 
     private fun parseHttp(uri: String, subscriptionId: Long): ProxyNode? {
-        val main = uri.removePrefix("http://").removePrefix("https://")
+        val lowerUri = uri.lowercase()
+        // Rule sets, sub links, github raw files, or common file extensions are NOT proxy nodes
+        if (lowerUri.contains(".txt") || lowerUri.contains(".list") || lowerUri.contains(".json") ||
+            lowerUri.contains(".yaml") || lowerUri.contains(".yml") || lowerUri.contains(".conf") ||
+            lowerUri.contains("/rules") || lowerUri.contains("/raw/") || lowerUri.contains("/master/") ||
+            lowerUri.contains("rule-set") || lowerUri.contains("rule_set") || lowerUri.contains("payload:")
+        ) {
+            return null
+        }
+
+        val main = uri.removePrefix("http://").removePrefix("HTTP://").removePrefix("https://").removePrefix("HTTPS://")
         val nameSplit = main.split("#", limit = 2)
-        val name = if (nameSplit.size > 1) urlDecode(nameSplit[1]) else "HTTP Node"
-        val body = nameSplit[0]
+        val name = if (nameSplit.size > 1) urlDecode(nameSplit[1]) else ""
+        val body = nameSplit[0].trim()
+
+        // Proxy address body must not contain url paths or query parameters
+        if (body.contains("/") || body.contains("?")) return null
 
         val atSplit = body.split("@", limit = 2)
         val tls = uri.startsWith("https://", ignoreCase = true)
-        return if (atSplit.size == 2) {
-            val hostPort = atSplit[1].split(":", limit = 2)
-            ProxyNode(
-                subscriptionId = subscriptionId,
-                name = name,
-                protocol = "http",
-                server = hostPort[0],
-                port = hostPort.getOrNull(1)?.toIntOrNull() ?: 8080,
-                tls = tls,
-                rawUri = uri
-            )
+
+        val (hostPortStr, userPassStr) = if (atSplit.size == 2) {
+            Pair(atSplit[1], atSplit[0])
         } else {
-            val hostPort = body.split(":", limit = 2)
-            ProxyNode(
-                subscriptionId = subscriptionId,
-                name = name,
-                protocol = "http",
-                server = hostPort[0],
-                port = hostPort.getOrNull(1)?.toIntOrNull() ?: 8080,
-                tls = tls,
-                rawUri = uri
-            )
+            Pair(atSplit[0], "")
         }
+
+        val hostPort = hostPortStr.split(":", limit = 2)
+        if (hostPort.size < 2) return null // Must have explicit host:port
+        val server = hostPort[0].trim()
+        val port = hostPort[1].toIntOrNull() ?: return null
+        if (server.isBlank() || server.contains(" ") || port <= 0 || port > 65535) return null
+
+        var user = ""
+        var pass = ""
+        if (userPassStr.isNotBlank()) {
+            val up = userPassStr.split(":", limit = 2)
+            user = up.getOrElse(0) { "" }
+            pass = up.getOrElse(1) { "" }
+        }
+
+        val finalName = if (name.isNotBlank()) name else "HTTP-$server"
+
+        return ProxyNode(
+            subscriptionId = subscriptionId,
+            name = finalName,
+            protocol = "http",
+            server = server,
+            port = port,
+            host = user,
+            uuidOrPassword = pass,
+            tls = tls,
+            rawUri = uri
+        )
     }
 
     private fun parseSingBoxJson(jsonStr: String, subscriptionId: Long): List<ProxyNode> {
@@ -357,12 +473,33 @@ object SubscriptionParser {
     }
 
     private fun tryDecodeBase64(input: String): String {
-        return try {
-            val cleaned = input.trim().replace("\n", "").replace("\r", "")
+        val cleaned = input.trim().replace("\n", "").replace("\r", "").replace(" ", "")
+        for (flags in intArrayOf(
+            Base64.DEFAULT or Base64.NO_WRAP or Base64.URL_SAFE,
+            Base64.DEFAULT or Base64.NO_WRAP,
+            Base64.URL_SAFE or Base64.NO_WRAP,
+            Base64.DEFAULT
+        )) {
+            try {
+                val padded = when (cleaned.length % 4) {
+                    2 -> "$cleaned=="
+                    3 -> "$cleaned="
+                    else -> cleaned
+                }
+                val decoded = Base64.decode(padded, flags)
+                val result = String(decoded, StandardCharsets.UTF_8)
+                if (result.isNotBlank() && (result.contains("://") || result.contains("name:") || result.contains("{") || result.contains("proxies:"))) {
+                    return result
+                }
+            } catch (e: Exception) {
+                // continue
+            }
+        }
+        try {
             val decoded = Base64.decode(cleaned, Base64.DEFAULT or Base64.NO_WRAP or Base64.URL_SAFE)
-            String(decoded, StandardCharsets.UTF_8)
+            return String(decoded, StandardCharsets.UTF_8)
         } catch (e: Exception) {
-            input
+            return input
         }
     }
 

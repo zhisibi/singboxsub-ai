@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,18 +73,20 @@ fun DashboardScreen(viewModel: MainViewModel) {
             .padding(horizontal = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item { Spacer(modifier = Modifier.height(4.dp)) }
+
+        // 1. Server Control & Status Hero Card
         item {
-            Spacer(modifier = Modifier.height(4.dp))
-            // 1. Server Control & Status Hero Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("server_status_card"),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = Color.Transparent
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -182,8 +185,9 @@ fun DashboardScreen(viewModel: MainViewModel) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -302,7 +306,7 @@ fun StatTile(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        color = containerColor
+        color = containerColor.copy(alpha = 0.85f)
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -339,8 +343,9 @@ fun LogItemCard(log: ServerLog) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     ) {
         Row(
             modifier = Modifier

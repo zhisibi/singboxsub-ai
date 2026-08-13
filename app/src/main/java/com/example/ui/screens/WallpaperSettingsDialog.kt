@@ -58,10 +58,19 @@ fun WallpaperSettingsDialog(
     val opacity by viewModel.wallpaperOpacity.collectAsStateWithLifecycle()
     val customUri by viewModel.customWallpaperUri.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                // ignore
+            }
             viewModel.setCustomWallpaperUri(it.toString())
         }
     }

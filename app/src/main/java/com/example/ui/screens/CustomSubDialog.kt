@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.QrCode
+import java.net.URLEncoder
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -412,9 +413,16 @@ fun CustomSubDialog(
     }
 
     if (showQrModal) {
+        val qrUrl = if (selectedFormat == "singbox") {
+            val encodedUrl = URLEncoder.encode(generatedSubUrl, "UTF-8")
+            val encodedName = URLEncoder.encode(customNameInput.ifBlank { "Sing-Box" }, "UTF-8")
+            "sing-box://import-remote-config?url=$encodedUrl#$encodedName"
+        } else {
+            generatedSubUrl
+        }
         QrCodeModal(
             title = if (isZh) "专属订阅二维码" else "Custom Subscription QR Code",
-            url = generatedSubUrl,
+            url = qrUrl,
             onDismiss = { showQrModal = false }
         )
     }

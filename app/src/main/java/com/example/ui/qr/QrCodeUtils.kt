@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -14,70 +15,34 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 
 object QrCodeGenerator {
-
     /**
-     * Minimal lightweight QR-code style matrix encoder for Android.
-     * Generates a deterministic bit matrix representation for visual QR code rendering.
+     * Encodes arbitrary text string into a standard, fully scannable QR Code bit matrix using ZXing.
      */
-    fun encodeToMatrix(text: String, matrixSize: Int = 25): Array<BooleanArray> {
-        val matrix = Array(matrixSize) { BooleanArray(matrixSize) }
-        val hash = text.hashCode()
-
-        // 1. Draw Position Detection Patterns (Finder Patterns) at 3 corners
-        drawFinderPattern(matrix, 0, 0)
-        drawFinderPattern(matrix, matrixSize - 7, 0)
-        drawFinderPattern(matrix, 0, matrixSize - 7)
-
-        // 2. Draw Timing Patterns
-        for (i in 7 until matrixSize - 7) {
-            matrix[6][i] = (i % 2 == 0)
-            matrix[i][6] = (i % 2 == 0)
-        }
-
-        // 3. Fill data matrix deterministically based on input text bytes
-        val bytes = text.toByteArray(Charsets.UTF_8)
-        var byteIdx = 0
-        var bitIdx = 0
-
-        for (r in 0 until matrixSize) {
-            for (c in 0 until matrixSize) {
-                // Skip finder patterns and timing patterns
-                if (isFinderOrTiming(r, c, matrixSize)) continue
-
-                val byteVal = if (bytes.isNotEmpty()) bytes[byteIdx % bytes.size].toInt() else 0
-                val bit = ((byteVal ushr (7 - (bitIdx % 8))) and 1) == 1
-
-                // XOR with pseudo-random pattern derived from index and hash
-                val pattern = ((r * 13 + c * 7 + hash) % 3 == 0)
-                matrix[r][c] = bit xor pattern
-
-                bitIdx++
-                if (bitIdx % 8 == 0) byteIdx++
+    fun encodeToMatrix(text: String): Array<BooleanArray>? {
+        if (text.isBlank()) return null
+        return try {
+            val hints = mapOf(
+                EncodeHintType.CHARACTER_SET to "UTF-8",
+                EncodeHintType.MARGIN to 1
+            )
+            val bitMatrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, hints)
+            val width = bitMatrix.width
+            val height = bitMatrix.height
+            val matrix = Array(height) { BooleanArray(width) }
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    matrix[y][x] = bitMatrix.get(x, y)
+                }
             }
-        }
-
-        return matrix
-    }
-
-    private fun isFinderOrTiming(r: Int, c: Int, size: Int): Boolean {
-        // Finder pattern bounds
-        if (r < 8 && c < 8) return true
-        if (r < 8 && c >= size - 8) return true
-        if (r >= size - 8 && c < 8) return true
-        // Timing lines
-        if (r == 6 || c == 6) return true
-        return false
-    }
-
-    private fun drawFinderPattern(matrix: Array<BooleanArray>, startR: Int, startC: Int) {
-        for (r in 0 until 7) {
-            for (c in 0 until 7) {
-                val isOuter = (r == 0 || r == 6 || c == 0 || c == 6)
-                val isInner = (r in 2..4 && c in 2..4)
-                matrix[startR + r][startC + c] = isOuter || isInner
-            }
+            matrix
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 }
@@ -90,8 +55,7 @@ fun QrCodeView(
     darkColor: Color = Color(0xFF0F172A),
     lightColor: Color = Color.White
 ) {
-    val matrixSize = 25
-    val matrix = QrCodeGenerator.encodeToMatrix(text, matrixSize)
+    val matrix = remember(text) { QrCodeGenerator.encodeToMatrix(text) }
 
     Box(
         modifier = modifier
@@ -100,18 +64,23 @@ fun QrCodeView(
             .background(lightColor),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.size(size - 32.dp)) {
-            val cellWidth = this.size.width / matrixSize
-            val cellHeight = this.size.height / matrixSize
+        if (matrix != null && matrix.isNotEmpty()) {
+            val matrixWidth = matrix[0].size
+            val matrixHeight = matrix.size
 
-            for (r in 0 until matrixSize) {
-                for (c in 0 until matrixSize) {
-                    if (matrix[r][c]) {
-                        drawRect(
-                            color = darkColor,
-                            topLeft = Offset(c * cellWidth, r * cellHeight),
-                            size = Size(cellWidth + 0.5f, cellHeight + 0.5f)
-                        )
+            Canvas(modifier = Modifier.size(size - 24.dp)) {
+                val cellWidth = this.size.width / matrixWidth
+                val cellHeight = this.size.height / matrixHeight
+
+                for (r in 0 until matrixHeight) {
+                    for (c in 0 until matrixWidth) {
+                        if (matrix[r][c]) {
+                            drawRect(
+                                color = darkColor,
+                                topLeft = Offset(c * cellWidth, r * cellHeight),
+                                size = Size(cellWidth + 0.3f, cellHeight + 0.3f)
+                            )
+                        }
                     }
                 }
             }

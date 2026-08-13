@@ -1,0 +1,74 @@
+name: Build & Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Build Release Artifacts & Publish Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Restore Signing Keystore
+        run: |
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          else
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Release APK & Bundle
+        run: |
+          gradle assembleRelease bundleRelease --stacktrace || gradle assembleDebug --stacktrace
+
+      - name: Prepare Release Artifacts
+        run: |
+          mkdir -p release-artifacts/
+          if [ -d "app/build/outputs/apk/release" ]; then
+            cp app/build/outputs/apk/release/*.apk release-artifacts/
+          fi
+          if [ -d "app/build/outputs/apk/debug" ]; then
+            cp app/build/outputs/apk/debug/*.apk release-artifacts/
+          fi
+          if [ -d "app/build/outputs/bundle/release" ]; then
+            cp app/build/outputs/bundle/release/*.aab release-artifacts/
+          fi
+
+      - name: Upload Release Artifacts to Workflow Run
+        uses: actions/upload-artifact@v4
+        with:
+          name: SingBoxSub-Release-Build
+          path: release-artifacts/*
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: release-artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

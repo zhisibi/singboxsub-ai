@@ -122,11 +122,6 @@ fun AddSubscriptionDialog(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
-                            Text(
-                                text = if (isZh) "支持 订阅 URL、剪贴板、多协议 URI 及配置文件" else "Support Subscription URLs, Clipboard, URIs & Configs",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
 
@@ -162,11 +157,6 @@ fun AddSubscriptionDialog(
                                 text = if (isZh) "📋 一键读取剪贴板" else "📋 Clipboard Quick Paste",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = if (isZh) "自动识别剪贴板中的节点链接或订阅地址" else "Auto detect node links or subscription URL in clipboard",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
@@ -214,34 +204,7 @@ fun AddSubscriptionDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Format Badges Indicator
-                Text(
-                    text = if (isZh) "💡 广泛兼容以下协议与配置格式：" else "💡 Compatible Protocols & Configs:",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("VLESS", "VMess", "Shadowsocks", "Trojan", "Hysteria2", "Socks5", "Sing-Box", "Clash").forEach { protocol ->
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
-                        ) {
-                            Text(
-                                text = protocol,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
+
 
                 Spacer(modifier = Modifier.weight(1f, fill = false))
                 Spacer(modifier = Modifier.height(24.dp))

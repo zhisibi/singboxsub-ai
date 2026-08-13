@@ -354,6 +354,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteInvalidNodes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allNodes = db.proxyNodeDao().getAllNodes()
+            val invalidNodes = allNodes.filter { it.pingMs < 0 }
+            if (invalidNodes.isEmpty()) {
+                _statusMessage.value = if (_isChineseMode.value) "未发现测试无效的节点" else "No invalid nodes found"
+                return@launch
+            }
+            invalidNodes.forEach { node ->
+                db.proxyNodeDao().deleteNodeById(node.id)
+            }
+            _statusMessage.value = if (_isChineseMode.value) "已成功删除 ${invalidNodes.size} 个无效节点" else "Deleted ${invalidNodes.size} invalid nodes"
+        }
+    }
+
     fun saveCustomSubscription(name: String, format: String, token: String, nodeIds: List<Long>, id: Long = 0) {
         viewModelScope.launch(Dispatchers.IO) {
             val subName = if (name.isBlank()) "自定义订阅 (${format.uppercase()})" else name
@@ -378,16 +393,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun fetchUrlContent(urlStr: String): String = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(urlStr)
-            .header("User-Agent", "SingBoxSub-Android/1.0 (sing-box; mihomo)")
-            .build()
-
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw Exception("HTTP ${response.code}: ${response.message}")
+        val userAgents = listOf(
+            "SingBoxSub-Android/1.0 (sing-box; mihomo)",
+            "ClashForAndroid/2.5.12",
+            "v2rayN/6.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        var lastException: Exception? = null
+        for (ua in userAgents) {
+            try {
+                val request = Request.Builder()
+                    .url(urlStr)
+                    .header("User-Agent", ua)
+                    .build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        if (body.isNotBlank()) return@withContext body
+                    } else {
+                        lastException = Exception("HTTP ${response.code}: ${response.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                lastException = e
             }
-            response.body?.string() ?: ""
         }
+        throw lastException ?: Exception("Failed to fetch subscription content")
     }
 }
