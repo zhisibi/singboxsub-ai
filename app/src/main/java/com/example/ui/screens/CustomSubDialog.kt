@@ -21,15 +21,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import java.net.URLEncoder
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkAdd
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.QrCode
-import java.net.URLEncoder
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -83,6 +85,21 @@ fun CustomSubDialog(
     var selectedFormat by remember { mutableStateOf(subToEdit?.format ?: "singbox") } // singbox, mihomo, base64
     var selectedHost by remember { mutableStateOf("127.0.0.1") } // 127.0.0.1 or LAN
     var showQrModal by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredNodes = remember(nodes, searchQuery) {
+        if (searchQuery.isBlank()) {
+            nodes
+        } else {
+            val q = searchQuery.trim()
+            nodes.filter { node ->
+                node.name.contains(q, ignoreCase = true) ||
+                node.server.contains(q, ignoreCase = true) ||
+                node.protocol.contains(q, ignoreCase = true) ||
+                node.port.toString().contains(q)
+            }
+        }
+    }
 
     LaunchedEffect(subToEdit) {
         if (subToEdit != null) {
@@ -234,31 +251,113 @@ fun CustomSubDialog(
                 Divider()
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Search & Filter Section
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text(if (isZh) "搜索筛选节点关键字 (名称/服务器/协议/端口)" else "Filter nodes (Name/Server/Protocol/Port)") },
+                    placeholder = { Text(if (isZh) "例如: 香港, vless, 443..." else "e.g. HK, vless, 443...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search", modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("custom_sub_search_input")
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Quick Filter Tag Chips
+                val quickTags = remember { listOf("香港", "日本", "美国", "新加坡", "台湾", "vless", "vmess", "hy2") }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isZh) "快捷标签:" else "Quick Tags:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    quickTags.forEach { tag ->
+                        FilterChip(
+                            selected = searchQuery.equals(tag, ignoreCase = true),
+                            onClick = {
+                                searchQuery = if (searchQuery.equals(tag, ignoreCase = true)) "" else tag
+                            },
+                            label = { Text(tag, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
                 // Node Selection Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val countText = if (searchQuery.isNotBlank()) {
+                        if (isZh) "已选 ${selectedIds.size} / 筛选 ${filteredNodes.size} (总 ${nodes.size})"
+                        else "Selected ${selectedIds.size} / Filtered ${filteredNodes.size} (Total ${nodes.size})"
+                    } else {
+                        if (isZh) "勾选节点 (${selectedIds.size} / ${nodes.size}):"
+                        else "Select Nodes (${selectedIds.size} / ${nodes.size}):"
+                    }
+
                     Text(
-                        text = if (isZh) "勾选节点 (${selectedIds.size} / ${nodes.size}):" else "Select Nodes (${selectedIds.size} / ${nodes.size}):",
+                        text = countText,
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+
+                    Spacer(modifier = Modifier.width(4.dp))
 
                     Row {
                         OutlinedButton(
-                            onClick = { viewModel.selectAllNodes() },
+                            onClick = {
+                                if (searchQuery.isNotBlank()) {
+                                    val newIds = selectedIds + filteredNodes.map { it.id }
+                                    viewModel.setSelectedNodeIds(newIds)
+                                } else {
+                                    viewModel.selectAllNodes()
+                                }
+                            },
                             modifier = Modifier.height(30.dp)
                         ) {
-                            Text(if (isZh) "全选" else "Select All", style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                text = if (searchQuery.isNotBlank()) (if (isZh) "全选筛选" else "Select Filtered") else (if (isZh) "全选" else "Select All"),
+                                style = MaterialTheme.typography.labelSmall
+                            )
                         }
                         Spacer(modifier = Modifier.width(6.dp))
                         OutlinedButton(
-                            onClick = { viewModel.clearSelectedNodes() },
+                            onClick = {
+                                if (searchQuery.isNotBlank()) {
+                                    val filteredIds = filteredNodes.map { it.id }.toSet()
+                                    viewModel.setSelectedNodeIds(selectedIds - filteredIds)
+                                } else {
+                                    viewModel.clearSelectedNodes()
+                                }
+                            },
                             modifier = Modifier.height(30.dp)
                         ) {
-                            Text(if (isZh) "清空" else "Clear", style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                text = if (searchQuery.isNotBlank()) (if (isZh) "取消筛选" else "Deselect Filtered") else (if (isZh) "清空" else "Clear"),
+                                style = MaterialTheme.typography.labelSmall
+                            )
                         }
                     }
                 }
@@ -281,8 +380,17 @@ fun CustomSubDialog(
                                 modifier = Modifier.padding(vertical = 12.dp)
                             )
                         }
+                    } else if (filteredNodes.isEmpty()) {
+                        item {
+                            Text(
+                                text = if (isZh) "未匹配到包含 '$searchQuery' 的节点" else "No nodes found matching '$searchQuery'",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        }
                     } else {
-                        items(nodes) { node ->
+                        items(filteredNodes) { node ->
                             val isSelected = selectedIds.contains(node.id)
                             Card(
                                 modifier = Modifier
