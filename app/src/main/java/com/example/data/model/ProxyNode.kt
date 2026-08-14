@@ -8,20 +8,27 @@ data class ProxyNode(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val subscriptionId: Long = 0,
     val name: String,
-    val protocol: String, // vless, vmess, ss, trojan, hysteria2, socks, http
+    val protocol: String, // vless, vmess, ss, trojan, hysteria2, anytls, tuic, socks, http
     val server: String,
     val port: Int,
     val uuidOrPassword: String = "",
     val cipher: String = "", // for ss/vmess
     val alterId: Int = 0, // for vmess
-    val network: String = "tcp", // tcp, ws, grpc, quic, http
+    val network: String = "tcp", // tcp, ws, grpc, quic, http, httpupgrade
     val path: String = "",
     val host: String = "",
     val tls: Boolean = false,
     val sni: String = "",
     val alpn: String = "",
     val allowInsecure: Boolean = false,
-    val flow: String = "", // for vless
+    val flow: String = "", // for vless (e.g. xtls-rprx-vision)
+    val fingerprint: String = "", // chrome, firefox, safari, etc.
+    val realityPublicKey: String = "", // pbk
+    val realityShortId: String = "", // sid
+    val realitySpiderX: String = "", // spx
+    val grpcServiceName: String = "", // grpc serviceName
+    val obfs: String = "", // hysteria2 obfs type e.g. salamander
+    val obfsPassword: String = "", // hysteria2 obfs password
     val rawUri: String = "",
     val enabled: Boolean = true,
     val pingMs: Int = -1 // -1 = untested, >0 = ms latency, -2 = error
@@ -31,8 +38,26 @@ data class ProxyNode(
         val encodedName = try { java.net.URLEncoder.encode(name, "UTF-8") } catch (e: Exception) { name }
         return when (protocol.lowercase()) {
             "vless" -> {
-                val tlsStr = if (tls) "tls" else "none"
-                "vless://${uuidOrPassword}@${server}:${port}?type=${network.ifBlank { "tcp" }}&security=${tlsStr}&sni=${sni}&host=${host}&path=${path}&flow=${flow}#${encodedName}"
+                val securityStr = when {
+                    realityPublicKey.isNotBlank() -> "reality"
+                    tls -> "tls"
+                    else -> "none"
+                }
+                val sb = StringBuilder("vless://${uuidOrPassword}@${server}:${port}?")
+                sb.append("type=${network.ifBlank { "tcp" }}")
+                sb.append("&security=$securityStr")
+                if (sni.isNotBlank()) sb.append("&sni=$sni")
+                if (host.isNotBlank()) sb.append("&host=$host")
+                if (path.isNotBlank()) sb.append("&path=$path")
+                if (flow.isNotBlank()) sb.append("&flow=$flow")
+                if (fingerprint.isNotBlank()) sb.append("&fp=$fingerprint")
+                if (realityPublicKey.isNotBlank()) sb.append("&pbk=$realityPublicKey")
+                if (realityShortId.isNotBlank()) sb.append("&sid=$realityShortId")
+                if (realitySpiderX.isNotBlank()) sb.append("&spx=$realitySpiderX")
+                if (grpcServiceName.isNotBlank()) sb.append("&serviceName=$grpcServiceName")
+                if (allowInsecure) sb.append("&insecure=1")
+                sb.append("#$encodedName")
+                sb.toString()
             }
             "vmess" -> {
                 val vmessJson = org.json.JSONObject().apply {
@@ -58,11 +83,23 @@ data class ProxyNode(
                 "ss://${userPass}@${server}:${port}#${encodedName}"
             }
             "trojan" -> {
-                "trojan://${uuidOrPassword}@${server}:${port}?sni=${if (sni.isNotBlank()) sni else server}#${encodedName}"
+                val sb = StringBuilder("trojan://${uuidOrPassword}@${server}:${port}?")
+                sb.append("sni=${if (sni.isNotBlank()) sni else server}")
+                if (network.isNotBlank() && network != "tcp") sb.append("&type=$network")
+                if (host.isNotBlank()) sb.append("&host=$host")
+                if (path.isNotBlank()) sb.append("&path=$path")
+                if (grpcServiceName.isNotBlank()) sb.append("&serviceName=$grpcServiceName")
+                if (allowInsecure) sb.append("&insecure=1")
+                sb.append("#$encodedName")
+                sb.toString()
             }
             "hysteria2", "hy2" -> {
                 val insecureVal = if (allowInsecure) "1" else "0"
-                "hy2://${uuidOrPassword}@${server}:${port}?sni=${if (sni.isNotBlank()) sni else server}&insecure=${insecureVal}#${encodedName}"
+                val sb = StringBuilder("hy2://${uuidOrPassword}@${server}:${port}?sni=${if (sni.isNotBlank()) sni else server}&insecure=${insecureVal}")
+                if (obfs.isNotBlank()) sb.append("&obfs=$obfs")
+                if (obfsPassword.isNotBlank()) sb.append("&obfs-password=$obfsPassword")
+                sb.append("#$encodedName")
+                sb.toString()
             }
             "anytls" -> {
                 val insecureVal = if (allowInsecure) "1" else "0"

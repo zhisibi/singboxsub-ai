@@ -48,12 +48,46 @@ object SubscriptionParser {
         return nodes
     }
 
+    /**
+     * Parses host:port safely handling IPv6 (e.g. [2001:db8::1]:8080 or 2001:db8::1) and trailing queries.
+     */
+    private fun parseAddressAndPort(rawHostPort: String, defaultPort: Int = 443): Pair<String, Int> {
+        val clean = rawHostPort.trim().substringBefore("?").substringBefore("/")
+        if (clean.isEmpty()) return Pair("", defaultPort)
+
+        // Handle IPv6 bracket format: [2602:294:0:b7::1]:8884
+        if (clean.startsWith("[")) {
+            val closeBracketIdx = clean.indexOf("]")
+            if (closeBracketIdx > 0) {
+                val host = clean.substring(0, closeBracketIdx + 1)
+                val after = clean.substring(closeBracketIdx + 1)
+                val port = if (after.startsWith(":")) {
+                    after.removePrefix(":").toIntOrNull() ?: defaultPort
+                } else {
+                    defaultPort
+                }
+                return Pair(host, port)
+            }
+        }
+
+        // Handle normal host:port (IPv4 or domain)
+        val colonIdx = clean.lastIndexOf(":")
+        return if (colonIdx > 0) {
+            val host = clean.substring(0, colonIdx)
+            val port = clean.substring(colonIdx + 1).toIntOrNull() ?: defaultPort
+            Pair(host, port)
+        } else {
+            Pair(clean, defaultPort)
+        }
+    }
+
     private fun parseClashYaml(yamlStr: String, subscriptionId: Long): List<ProxyNode> {
         val nodes = mutableListOf<ProxyNode>()
         try {
             val lines = yamlStr.lines()
             var inProxies = false
             var currentProxyProps = mutableMapOf<String, String>()
+            var currentSubMap = "" // "ws-opts", "grpc-opts", "reality-opts", "headers"
 
             fun flushProxy() {
                 if (currentProxyProps.isNotEmpty()) {
@@ -64,18 +98,26 @@ object SubscriptionParser {
                     if (server.isNotBlank()) {
                         val password = currentProxyProps["password"] ?: currentProxyProps["uuid"] ?: currentProxyProps["passwd"] ?: ""
                         val cipher = currentProxyProps["cipher"] ?: "aes-256-gcm"
+                        val alterId = currentProxyProps["alterid"]?.toIntOrNull() ?: 0
                         val sni = currentProxyProps["sni"] ?: currentProxyProps["servername"] ?: ""
-                        val tls = currentProxyProps["tls"]?.toBoolean() ?: (type == "vless" || type == "trojan" || type == "hysteria2" || type == "tuic")
+                        val network = currentProxyProps["network"] ?: "tcp"
+                        val path = currentProxyProps["path"] ?: currentProxyProps["ws-opts.path"] ?: ""
+                        val host = currentProxyProps["host"] ?: currentProxyProps["ws-opts.headers.host"] ?: ""
+                        val flow = currentProxyProps["flow"] ?: ""
+                        val fp = currentProxyProps["client-fingerprint"] ?: currentProxyProps["fingerprint"] ?: ""
+                        val pbk = currentProxyProps["public-key"] ?: currentProxyProps["reality-opts.public-key"] ?: ""
+                        val sid = currentProxyProps["short-id"] ?: currentProxyProps["reality-opts.short-id"] ?: ""
+                        val grpcService = currentProxyProps["grpc-service-name"] ?: currentProxyProps["grpc-opts.grpc-service-name"] ?: ""
+                        val obfs = currentProxyProps["obfs"] ?: ""
+                        val obfsPass = currentProxyProps["obfs-password"] ?: ""
+
+                        val isTls = currentProxyProps["tls"]?.toBoolean() ?: (
+                            type.lowercase() in setOf("vless", "trojan", "hysteria2", "tuic", "anytls") || pbk.isNotBlank()
+                        )
                         val insecure = currentProxyProps["skip-cert-verify"]?.toBoolean() ?: false
 
                         val validTypes = setOf("ss", "ssr", "vmess", "vless", "trojan", "hysteria", "hysteria2", "hy2", "socks5", "socks", "http", "snell", "tuic", "wireguard", "shadowsocks", "anytls")
-                        if (validTypes.contains(type.lowercase()) && server.isNotBlank() && !server.contains("/") && !server.contains("://")) {
-                            val password = currentProxyProps["password"] ?: currentProxyProps["uuid"] ?: currentProxyProps["passwd"] ?: ""
-                            val cipher = currentProxyProps["cipher"] ?: "aes-256-gcm"
-                            val sni = currentProxyProps["sni"] ?: currentProxyProps["servername"] ?: ""
-                            val tls = currentProxyProps["tls"]?.toBoolean() ?: (type == "vless" || type == "trojan" || type == "hysteria2" || type == "tuic")
-                            val insecure = currentProxyProps["skip-cert-verify"]?.toBoolean() ?: false
-
+                        if (validTypes.contains(type.lowercase()) && server.isNotBlank() && !server.contains("://")) {
                             nodes.add(
                                 ProxyNode(
                                     subscriptionId = subscriptionId,
@@ -85,14 +127,26 @@ object SubscriptionParser {
                                     port = port,
                                     uuidOrPassword = password,
                                     cipher = cipher,
-                                    tls = tls,
+                                    alterId = alterId,
+                                    network = network,
+                                    path = path,
+                                    host = host,
+                                    tls = isTls,
                                     sni = sni,
-                                    allowInsecure = insecure
+                                    allowInsecure = insecure,
+                                    flow = flow,
+                                    fingerprint = fp,
+                                    realityPublicKey = pbk,
+                                    realityShortId = sid,
+                                    grpcServiceName = grpcService,
+                                    obfs = obfs,
+                                    obfsPassword = obfsPass
                                 )
                             )
                         }
                     }
                     currentProxyProps.clear()
+                    currentSubMap = ""
                 }
             }
 
@@ -110,6 +164,7 @@ object SubscriptionParser {
                     }
                     if (line.startsWith("- ")) {
                         flushProxy()
+                        currentSubMap = ""
                         val contentAfterDash = line.removePrefix("- ").trim()
                         if (contentAfterDash.contains(":")) {
                             val kv = contentAfterDash.split(":", limit = 2)
@@ -120,9 +175,16 @@ object SubscriptionParser {
                     } else if (line.contains(":") && !line.startsWith("#")) {
                         val kv = line.split(":", limit = 2)
                         if (kv.size == 2) {
-                            val key = kv[0].trim().lowercase()
-                            val value = kv[1].trim().removeSurrounding("\"").removeSurrounding("'")
-                            currentProxyProps[key] = value
+                            val rawKey = kv[0].trim().lowercase()
+                            val rawVal = kv[1].trim().removeSurrounding("\"").removeSurrounding("'")
+                            if (rawVal.isEmpty() && (rawKey.endsWith("-opts") || rawKey == "headers")) {
+                                currentSubMap = rawKey
+                            } else {
+                                if (currentSubMap.isNotEmpty()) {
+                                    currentProxyProps["$currentSubMap.$rawKey"] = rawVal
+                                }
+                                currentProxyProps[rawKey] = rawVal
+                            }
                         }
                     }
                 }
@@ -153,7 +215,6 @@ object SubscriptionParser {
     }
 
     private fun parseVless(uri: String, subscriptionId: Long): ProxyNode? {
-        // vless://uuid@host:port?param1=val1&param2=val2#Remark
         val main = uri.removePrefix("vless://").removePrefix("VLESS://")
         val nameSplit = main.split("#", limit = 2)
         val name = if (nameSplit.size > 1) urlDecode(nameSplit[1]) else "VLESS Node"
@@ -166,19 +227,23 @@ object SubscriptionParser {
         val atSplit = userInfoAndAddress.split("@", limit = 2)
         if (atSplit.size < 2) return null
         val uuid = atSplit[0]
-        val hostPort = atSplit[1].split(":", limit = 2)
-        if (hostPort.size < 2) return null
 
-        val server = hostPort[0]
-        val port = hostPort[1].toIntOrNull() ?: 443
+        val (server, port) = parseAddressAndPort(atSplit[1], 443)
+        if (server.isBlank()) return null
 
         val network = queryParams["type"] ?: queryParams["network"] ?: "tcp"
-        val security = queryParams["security"] ?: ""
-        val tls = security.equals("tls", ignoreCase = true) || security.equals("reality", ignoreCase = true)
-        val sni = queryParams["sni"] ?: queryParams["peer"] ?: ""
-        val host = queryParams["host"] ?: ""
+        val security = (queryParams["security"] ?: "").lowercase()
+        val pbk = queryParams["pbk"] ?: queryParams["publickey"] ?: ""
+        val sid = queryParams["sid"] ?: queryParams["shortid"] ?: ""
+        val spx = queryParams["spx"] ?: queryParams["spiderx"] ?: ""
+        val fp = queryParams["fp"] ?: queryParams["fingerprint"] ?: queryParams["client-fingerprint"] ?: (if (security == "reality" || pbk.isNotBlank()) "chrome" else "")
+        val tls = security == "tls" || security == "reality" || pbk.isNotBlank()
+        val sni = queryParams["sni"] ?: queryParams["peer"] ?: server
+        val host = queryParams["host"] ?: queryParams["headerType"] ?: ""
         val path = queryParams["path"] ?: ""
         val flow = queryParams["flow"] ?: ""
+        val grpcService = queryParams["serviceName"] ?: queryParams["servicename"] ?: queryParams["grpc-service-name"] ?: ""
+        val insecure = queryParams["insecure"] == "1" || queryParams["allow_insecure"] == "1" || queryParams["allowInsecure"] == "1"
 
         return ProxyNode(
             subscriptionId = subscriptionId,
@@ -193,6 +258,12 @@ object SubscriptionParser {
             tls = tls,
             sni = sni,
             flow = flow,
+            fingerprint = fp,
+            realityPublicKey = pbk,
+            realityShortId = sid,
+            realitySpiderX = spx,
+            grpcServiceName = grpcService,
+            allowInsecure = insecure,
             rawUri = uri
         )
     }
@@ -209,7 +280,6 @@ object SubscriptionParser {
         val cipher = json.optString("scy", "auto")
         val alterId = json.optInt("aid", 0)
         val net = json.optString("net", "tcp")
-        val type = json.optString("type", "none")
         val host = json.optString("host", "")
         val path = json.optString("path", "")
         val tlsStr = json.optString("tls", "")
@@ -236,7 +306,6 @@ object SubscriptionParser {
     }
 
     private fun parseShadowsocks(uri: String, subscriptionId: Long): ProxyNode? {
-        // ss://base64(method:password)@server:port#Name OR ss://base64(method:password@server:port)#Name
         val main = uri.removePrefix("ss://").removePrefix("SS://")
         val nameSplit = main.split("#", limit = 2)
         val name = if (nameSplit.size > 1) urlDecode(nameSplit[1]) else "Shadowsocks"
@@ -247,14 +316,14 @@ object SubscriptionParser {
             val userInfoDecoded = tryDecodeBase64(parts[0])
             val creds = if (userInfoDecoded.contains(":")) userInfoDecoded else parts[0]
             val methodPass = creds.split(":", limit = 2)
-            val hostPort = parts[1].split(":", limit = 2)
+            val (server, port) = parseAddressAndPort(parts[1], 8388)
 
             ProxyNode(
                 subscriptionId = subscriptionId,
                 name = name,
                 protocol = "ss",
-                server = hostPort[0],
-                port = hostPort.getOrNull(1)?.toIntOrNull() ?: 8388,
+                server = server,
+                port = port,
                 cipher = methodPass.getOrElse(0) { "aes-256-gcm" },
                 uuidOrPassword = methodPass.getOrElse(1) { "" },
                 rawUri = uri
@@ -264,14 +333,14 @@ object SubscriptionParser {
             val atSplit = decoded.split("@", limit = 2)
             if (atSplit.size < 2) return null
             val methodPass = atSplit[0].split(":", limit = 2)
-            val hostPort = atSplit[1].split(":", limit = 2)
+            val (server, port) = parseAddressAndPort(atSplit[1], 8388)
 
             ProxyNode(
                 subscriptionId = subscriptionId,
                 name = name,
                 protocol = "ss",
-                server = hostPort[0],
-                port = hostPort.getOrNull(1)?.toIntOrNull() ?: 8388,
+                server = server,
+                port = port,
                 cipher = methodPass.getOrElse(0) { "aes-256-gcm" },
                 uuidOrPassword = methodPass.getOrElse(1) { "" },
                 rawUri = uri
@@ -292,11 +361,15 @@ object SubscriptionParser {
         val atSplit = userInfoAndAddress.split("@", limit = 2)
         if (atSplit.size < 2) return null
         val password = atSplit[0]
-        val hostPort = atSplit[1].split(":", limit = 2)
 
-        val server = hostPort[0]
-        val port = hostPort.getOrNull(1)?.toIntOrNull() ?: 443
+        val (server, port) = parseAddressAndPort(atSplit[1], 443)
         val sni = queryParams["sni"] ?: queryParams["peer"] ?: server
+        val network = queryParams["type"] ?: queryParams["network"] ?: "tcp"
+        val path = queryParams["path"] ?: ""
+        val host = queryParams["host"] ?: ""
+        val grpcService = queryParams["serviceName"] ?: queryParams["servicename"] ?: queryParams["grpc-service-name"] ?: ""
+        val insecure = queryParams["insecure"] == "1" || queryParams["allow_insecure"] == "1" || queryParams["allowInsecure"] == "1"
+        val alpn = queryParams["alpn"] ?: ""
 
         return ProxyNode(
             subscriptionId = subscriptionId,
@@ -305,8 +378,14 @@ object SubscriptionParser {
             server = server,
             port = port,
             uuidOrPassword = password,
+            network = network,
+            path = path,
+            host = host,
+            grpcServiceName = grpcService,
             tls = true,
             sni = sni,
+            alpn = alpn,
+            allowInsecure = insecure,
             rawUri = uri
         )
     }
@@ -324,12 +403,12 @@ object SubscriptionParser {
         val atSplit = userInfoAndAddress.split("@", limit = 2)
         if (atSplit.size < 2) return null
         val password = atSplit[0]
-        val hostPort = atSplit[1].split(":", limit = 2)
 
-        val server = hostPort[0]
-        val port = hostPort.getOrNull(1)?.toIntOrNull() ?: 443
+        val (server, port) = parseAddressAndPort(atSplit[1], 443)
         val sni = queryParams["sni"] ?: server
-        val insecure = queryParams["insecure"] == "1" || queryParams["allow_insecure"] == "1"
+        val insecure = queryParams["insecure"] == "1" || queryParams["allow_insecure"] == "1" || queryParams["insecure"] == "true"
+        val obfs = queryParams["obfs"] ?: ""
+        val obfsPass = queryParams["obfs-password"] ?: queryParams["obfs_password"] ?: ""
 
         return ProxyNode(
             subscriptionId = subscriptionId,
@@ -341,6 +420,8 @@ object SubscriptionParser {
             tls = true,
             sni = sni,
             allowInsecure = insecure,
+            obfs = obfs,
+            obfsPassword = obfsPass,
             rawUri = uri
         )
     }
@@ -358,10 +439,8 @@ object SubscriptionParser {
         val atSplit = userInfoAndAddress.split("@", limit = 2)
         if (atSplit.size < 2) return null
         val password = atSplit[0]
-        val hostPort = atSplit[1].split(":", limit = 2)
 
-        val server = hostPort[0]
-        val port = hostPort.getOrNull(1)?.toIntOrNull() ?: 443
+        val (server, port) = parseAddressAndPort(atSplit[1], 443)
         val sni = queryParams["sni"] ?: queryParams["peer"] ?: server
         val insecure = queryParams["insecure"] == "1" || queryParams["allow_insecure"] == "1" || queryParams["skip-cert-verify"] == "true"
 
@@ -388,25 +467,25 @@ object SubscriptionParser {
         val atSplit = body.split("@", limit = 2)
         return if (atSplit.size == 2) {
             val userPass = atSplit[0].split(":", limit = 2)
-            val hostPort = atSplit[1].split(":", limit = 2)
+            val (server, port) = parseAddressAndPort(atSplit[1], 1080)
             ProxyNode(
                 subscriptionId = subscriptionId,
                 name = name,
                 protocol = "socks",
-                server = hostPort[0],
-                port = hostPort.getOrNull(1)?.toIntOrNull() ?: 1080,
+                server = server,
+                port = port,
                 uuidOrPassword = userPass.getOrElse(1) { "" },
                 host = userPass.getOrElse(0) { "" },
                 rawUri = uri
             )
         } else {
-            val hostPort = body.split(":", limit = 2)
+            val (server, port) = parseAddressAndPort(body, 1080)
             ProxyNode(
                 subscriptionId = subscriptionId,
                 name = name,
                 protocol = "socks",
-                server = hostPort[0],
-                port = hostPort.getOrNull(1)?.toIntOrNull() ?: 1080,
+                server = server,
+                port = port,
                 rawUri = uri
             )
         }
@@ -414,7 +493,6 @@ object SubscriptionParser {
 
     private fun parseHttp(uri: String, subscriptionId: Long): ProxyNode? {
         val lowerUri = uri.lowercase()
-        // Rule sets, sub links, github raw files, or common file extensions are NOT proxy nodes
         if (lowerUri.contains(".txt") || lowerUri.contains(".list") || lowerUri.contains(".json") ||
             lowerUri.contains(".yaml") || lowerUri.contains(".yml") || lowerUri.contains(".conf") ||
             lowerUri.contains("/rules") || lowerUri.contains("/raw/") || lowerUri.contains("/master/") ||
@@ -428,7 +506,6 @@ object SubscriptionParser {
         val name = if (nameSplit.size > 1) urlDecode(nameSplit[1]) else ""
         val body = nameSplit[0].trim()
 
-        // Proxy address body must not contain url paths or query parameters
         if (body.contains("/") || body.contains("?")) return null
 
         val atSplit = body.split("@", limit = 2)
@@ -440,11 +517,8 @@ object SubscriptionParser {
             Pair(atSplit[0], "")
         }
 
-        val hostPort = hostPortStr.split(":", limit = 2)
-        if (hostPort.size < 2) return null // Must have explicit host:port
-        val server = hostPort[0].trim()
-        val port = hostPort[1].toIntOrNull() ?: return null
-        if (server.isBlank() || server.contains(" ") || port <= 0 || port > 65535) return null
+        val (server, port) = parseAddressAndPort(hostPortStr, if (tls) 443 else 80)
+        if (server.isBlank() || server.contains(" ")) return null
 
         var user = ""
         var pass = ""
@@ -481,11 +555,35 @@ object SubscriptionParser {
                 val server = ob.optString("server", "")
                 val port = ob.optInt("server_port", 0)
 
-                if (server.isNotEmpty() && port > 0) {
+                val validTypes = setOf("vless", "vmess", "shadowsocks", "ss", "trojan", "hysteria2", "tuic", "anytls", "socks", "http")
+                if (type.lowercase() in validTypes && server.isNotEmpty() && port > 0) {
                     val uuid = ob.optString("uuid", ob.optString("password", ""))
+                    val method = ob.optString("method", ob.optString("security", "aes-256-gcm"))
+                    val alterId = ob.optInt("alter_id", 0)
+                    val flow = ob.optString("flow", "")
+
                     val tlsObj = ob.optJSONObject("tls")
-                    val tls = tlsObj?.optBoolean("enabled", false) ?: false
+                    val tls = tlsObj?.optBoolean("enabled", false) ?: (type == "trojan" || type == "hysteria2" || type == "tuic")
                     val sni = tlsObj?.optString("server_name", "") ?: ""
+                    val insecure = tlsObj?.optBoolean("insecure", false) ?: false
+
+                    val utlsObj = tlsObj?.optJSONObject("utls")
+                    val fp = utlsObj?.optString("fingerprint", "") ?: ""
+
+                    val realityObj = tlsObj?.optJSONObject("reality")
+                    val pbk = realityObj?.optString("public_key", "") ?: ""
+                    val sid = realityObj?.optString("short_id", "") ?: ""
+
+                    val transportObj = ob.optJSONObject("transport")
+                    val netType = transportObj?.optString("type", "tcp") ?: "tcp"
+                    val path = transportObj?.optString("path", "") ?: ""
+                    val grpcService = transportObj?.optString("service_name", "") ?: ""
+                    val headersObj = transportObj?.optJSONObject("headers")
+                    val host = headersObj?.optString("host", headersObj?.optString("Host", "")) ?: ""
+
+                    val obfsObj = ob.optJSONObject("obfs")
+                    val obfsType = obfsObj?.optString("type", "") ?: ""
+                    val obfsPass = obfsObj?.optString("password", "") ?: ""
 
                     nodes.add(
                         ProxyNode(
@@ -495,8 +593,21 @@ object SubscriptionParser {
                             server = server,
                             port = port,
                             uuidOrPassword = uuid,
+                            cipher = method,
+                            alterId = alterId,
+                            network = netType,
+                            path = path,
+                            host = host,
                             tls = tls,
-                            sni = sni
+                            sni = sni,
+                            allowInsecure = insecure,
+                            flow = flow,
+                            fingerprint = fp,
+                            realityPublicKey = pbk,
+                            realityShortId = sid,
+                            grpcServiceName = grpcService,
+                            obfs = obfsType,
+                            obfsPassword = obfsPass
                         )
                     )
                 }
@@ -557,19 +668,10 @@ object SubscriptionParser {
         }
     }
 
-    /**
-     * Extracts direct HTTP/HTTPS subscription URL and optional name from custom scheme links like:
-     * - sing-box://import-remote-profile?url=http%3A%2F%2F...#Name
-     * - sing-box://import-remote-config?url=http%3A%2F%2F...#Name
-     * - clash://install-config?url=...
-     * - v2rayn://install-config?url=...
-     * - sub://<base64_or_url>
-     */
     fun extractSubscriptionUrlAndName(input: String): Pair<String, String?> {
         val trimmed = input.trim()
         if (trimmed.isEmpty()) return Pair("", null)
 
-        // Direct HTTP or HTTPS URL
         if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
             val nameFromHash = if (trimmed.contains("#")) {
                 try { URLDecoder.decode(trimmed.substringAfter("#"), "UTF-8") } catch (e: Exception) { null }
@@ -577,13 +679,11 @@ object SubscriptionParser {
             return Pair(trimmed, nameFromHash)
         }
 
-        // Custom scheme links: sing-box://, singbox://, clash://, v2rayn://, sn://, sub://
         val lower = trimmed.lowercase()
         if (lower.startsWith("sing-box://") || lower.startsWith("singbox://") ||
             lower.startsWith("clash://") || lower.startsWith("v2rayn://") ||
             lower.startsWith("sn://") || lower.startsWith("sub://")) {
 
-            // 1. Check for url= parameter in query string
             if (trimmed.contains("url=", ignoreCase = true)) {
                 val urlParam = trimmed.substringAfter("url=").substringBefore("&").substringBefore("#")
                 if (urlParam.isNotBlank()) {
@@ -606,7 +706,6 @@ object SubscriptionParser {
                 }
             }
 
-            // 2. sub:// format (base64 or direct HTTP URL)
             if (lower.startsWith("sub://")) {
                 val afterSub = trimmed.removePrefix("sub://").removePrefix("SUB://")
                 val decoded = tryDecodeBase64(afterSub)
@@ -619,7 +718,6 @@ object SubscriptionParser {
             }
         }
 
-        // Fallback: search for embedded http:// or https:// if user pasted text containing a URL
         val httpIdx = trimmed.indexOf("http://", ignoreCase = true)
         val httpsIdx = trimmed.indexOf("https://", ignoreCase = true)
         val idx = when {

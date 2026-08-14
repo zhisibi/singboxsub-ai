@@ -47,7 +47,7 @@ object SingBoxConfigGenerator {
             root.put("http_clients", httpClients)
         }
 
-        // 2. dns configuration matching version template
+        // 2. dns configuration
         val dns = JSONObject().apply {
             val servers = JSONArray().apply {
                 if (isLegacy113) {
@@ -198,7 +198,7 @@ object SingBoxConfigGenerator {
         })
 
         // Additional policy group selectors matching user template
-        val extraSelectors = listOf("🏠 私有网络", "🔒 国内服务", "🌐 非中国", "🐟 漏网之鱼")
+        val extraSelectors = listOf("🔒 国内服务", "🌐 非中国", "🏠 私有网络", "🐟 漏网之鱼")
         extraSelectors.forEach { selName ->
             outbounds.put(JSONObject().apply {
                 put("type", "selector")
@@ -328,59 +328,69 @@ object SingBoxConfigGenerator {
     private fun buildNodeOutbound(node: ProxyNode): JSONObject? {
         val ob = JSONObject()
         ob.put("tag", node.name)
-        ob.put("server", node.server)
+        // Clean server address for Sing-Box if surrounded by brackets
+        val cleanServer = node.server.removePrefix("[").removeSuffix("]")
+        ob.put("server", cleanServer)
         ob.put("server_port", node.port)
+
+        val effectiveSni = if (node.sni.isNotEmpty()) node.sni.removePrefix("[").removeSuffix("]") else cleanServer
 
         when (node.protocol.lowercase()) {
             "vless" -> {
                 ob.put("type", "vless")
                 ob.put("uuid", node.uuidOrPassword)
                 if (node.flow.isNotEmpty()) ob.put("flow", node.flow)
-                if (node.tls) {
+                ob.put("packet_encoding", "xudp")
+
+                if (node.tls || node.realityPublicKey.isNotEmpty()) {
                     val tlsObj = JSONObject().apply {
                         put("enabled", true)
-                        put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
-                        put("insecure", node.allowInsecure)
-                    }
-                    ob.put("tls", tlsObj)
-                }
-                if (node.network.isNotEmpty() && node.network != "tcp") {
-                    val transport = JSONObject().apply {
-                        put("type", node.network)
-                        if (node.path.isNotEmpty()) put("path", node.path)
-                        if (node.host.isNotEmpty()) {
-                            put("headers", JSONObject().apply {
-                                put("host", node.host)
+                        put("server_name", effectiveSni)
+                        if (node.allowInsecure) put("insecure", true)
+
+                        if (node.fingerprint.isNotEmpty() || node.realityPublicKey.isNotEmpty() || node.flow.isNotEmpty()) {
+                            put("utls", JSONObject().apply {
+                                put("enabled", true)
+                                put("fingerprint", if (node.fingerprint.isNotEmpty()) node.fingerprint else "chrome")
+                            })
+                        }
+
+                        if (node.realityPublicKey.isNotEmpty()) {
+                            put("reality", JSONObject().apply {
+                                put("enabled", true)
+                                put("public_key", node.realityPublicKey)
+                                if (node.realityShortId.isNotEmpty()) put("short_id", node.realityShortId)
                             })
                         }
                     }
-                    ob.put("transport", transport)
+                    ob.put("tls", tlsObj)
                 }
+
+                buildTransport(node)?.let { ob.put("transport", it) }
             }
             "vmess" -> {
                 ob.put("type", "vmess")
                 ob.put("uuid", node.uuidOrPassword)
                 ob.put("alter_id", node.alterId)
                 ob.put("security", if (node.cipher.isNotEmpty()) node.cipher else "auto")
+                ob.put("packet_encoding", "xudp")
+
                 if (node.tls) {
                     val tlsObj = JSONObject().apply {
                         put("enabled", true)
-                        put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
-                    }
-                    ob.put("tls", tlsObj)
-                }
-                if (node.network.isNotEmpty() && node.network != "tcp") {
-                    val transport = JSONObject().apply {
-                        put("type", node.network)
-                        if (node.path.isNotEmpty()) put("path", node.path)
-                        if (node.host.isNotEmpty()) {
-                            put("headers", JSONObject().apply {
-                                put("host", node.host)
+                        put("server_name", effectiveSni)
+                        if (node.allowInsecure) put("insecure", true)
+                        if (node.fingerprint.isNotEmpty()) {
+                            put("utls", JSONObject().apply {
+                                put("enabled", true)
+                                put("fingerprint", node.fingerprint)
                             })
                         }
                     }
-                    ob.put("transport", transport)
+                    ob.put("tls", tlsObj)
                 }
+
+                buildTransport(node)?.let { ob.put("transport", it) }
             }
             "ss", "shadowsocks" -> {
                 ob.put("type", "shadowsocks")
@@ -392,20 +402,32 @@ object SingBoxConfigGenerator {
                 ob.put("password", node.uuidOrPassword)
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
-                    put("insecure", node.allowInsecure)
+                    put("server_name", effectiveSni)
+                    if (node.allowInsecure) put("insecure", true)
+                    if (node.alpn.isNotEmpty()) {
+                        val alpnList = node.alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        put("alpn", JSONArray(alpnList))
+                    }
                 }
                 ob.put("tls", tlsObj)
+                buildTransport(node)?.let { ob.put("transport", it) }
             }
             "hysteria2", "hy2" -> {
                 ob.put("type", "hysteria2")
                 ob.put("password", node.uuidOrPassword)
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
-                    put("insecure", node.allowInsecure)
+                    put("server_name", effectiveSni)
+                    if (node.allowInsecure) put("insecure", true)
                 }
                 ob.put("tls", tlsObj)
+
+                if (node.obfs.isNotEmpty()) {
+                    ob.put("obfs", JSONObject().apply {
+                        put("type", node.obfs)
+                        if (node.obfsPassword.isNotEmpty()) put("password", node.obfsPassword)
+                    })
+                }
             }
             "tuic" -> {
                 ob.put("type", "tuic")
@@ -414,19 +436,20 @@ object SingBoxConfigGenerator {
                 ob.put("congestion_control", "bbr")
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
-                    put("insecure", node.allowInsecure)
+                    put("server_name", effectiveSni)
+                    if (node.allowInsecure) put("insecure", true)
                     put("alpn", JSONArray().apply { put("h3") })
                 }
                 ob.put("tls", tlsObj)
             }
             "anytls" -> {
-                ob.put("type", "anytls")
+                // In standard Sing-Box, AnyTLS is supported as trojan or direct TLS outbound
+                ob.put("type", "trojan")
                 ob.put("password", node.uuidOrPassword)
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
-                    put("insecure", node.allowInsecure)
+                    put("server_name", effectiveSni)
+                    if (node.allowInsecure) put("insecure", true)
                 }
                 ob.put("tls", tlsObj)
             }
@@ -442,8 +465,8 @@ object SingBoxConfigGenerator {
                 if (node.tls) {
                     val tlsObj = JSONObject().apply {
                         put("enabled", true)
-                        put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
-                        put("insecure", node.allowInsecure)
+                        put("server_name", effectiveSni)
+                        if (node.allowInsecure) put("insecure", true)
                     }
                     ob.put("tls", tlsObj)
                 }
@@ -452,6 +475,44 @@ object SingBoxConfigGenerator {
         }
 
         return ob
+    }
+
+    private fun buildTransport(node: ProxyNode): JSONObject? {
+        val net = node.network.lowercase()
+        if (net.isEmpty() || net == "tcp") return null
+
+        val transport = JSONObject()
+        when (net) {
+            "ws", "websocket" -> {
+                transport.put("type", "ws")
+                if (node.path.isNotEmpty()) transport.put("path", node.path)
+                if (node.host.isNotEmpty()) {
+                    transport.put("headers", JSONObject().apply {
+                        put("Host", node.host)
+                    })
+                }
+            }
+            "grpc" -> {
+                transport.put("type", "grpc")
+                val serviceName = if (node.grpcServiceName.isNotEmpty()) node.grpcServiceName else node.path
+                if (serviceName.isNotEmpty()) transport.put("service_name", serviceName)
+            }
+            "httpupgrade" -> {
+                transport.put("type", "httpupgrade")
+                if (node.host.isNotEmpty()) transport.put("host", node.host)
+                if (node.path.isNotEmpty()) transport.put("path", node.path)
+            }
+            "http" -> {
+                transport.put("type", "http")
+                if (node.host.isNotEmpty()) transport.put("host", JSONArray().apply { put(node.host) })
+                if (node.path.isNotEmpty()) transport.put("path", node.path)
+            }
+            "quic" -> {
+                transport.put("type", "quic")
+            }
+            else -> return null
+        }
+        return transport
     }
 }
 
@@ -534,22 +595,19 @@ object ClashConfigGenerator {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    udp: true")
                     if (node.flow.isNotEmpty()) sb.appendLine("    flow: \"${escapeYaml(node.flow)}\"")
-                    if (node.tls) {
+                    if (node.tls || node.realityPublicKey.isNotEmpty()) {
                         sb.appendLine("    tls: true")
                         sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
-                    }
-                    if (node.network.isNotEmpty() && node.network != "tcp") {
-                        sb.appendLine("    network: ${node.network}")
-                        if (node.network == "ws") {
-                            sb.appendLine("    ws-opts:")
-                            if (node.path.isNotEmpty()) sb.appendLine("      path: \"${escapeYaml(node.path)}\"")
-                            if (node.host.isNotEmpty()) {
-                                sb.appendLine("      headers:")
-                                sb.appendLine("        Host: \"${escapeYaml(node.host)}\"")
-                            }
+                        val fp = if (node.fingerprint.isNotEmpty()) node.fingerprint else if (node.realityPublicKey.isNotEmpty()) "chrome" else ""
+                        if (fp.isNotEmpty()) sb.appendLine("    client-fingerprint: \"${escapeYaml(fp)}\"")
+                        if (node.realityPublicKey.isNotEmpty()) {
+                            sb.appendLine("    reality-opts:")
+                            sb.appendLine("      public-key: \"${escapeYaml(node.realityPublicKey)}\"")
+                            if (node.realityShortId.isNotEmpty()) sb.appendLine("      short-id: \"${escapeYaml(node.realityShortId)}\"")
                         }
                     }
+                    appendClashTransport(sb, node)
                 }
                 "vmess" -> {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
@@ -560,18 +618,9 @@ object ClashConfigGenerator {
                         sb.appendLine("    tls: true")
                         sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                        if (node.fingerprint.isNotEmpty()) sb.appendLine("    client-fingerprint: \"${escapeYaml(node.fingerprint)}\"")
                     }
-                    if (node.network.isNotEmpty() && node.network != "tcp") {
-                        sb.appendLine("    network: ${node.network}")
-                        if (node.network == "ws") {
-                            sb.appendLine("    ws-opts:")
-                            if (node.path.isNotEmpty()) sb.appendLine("      path: \"${escapeYaml(node.path)}\"")
-                            if (node.host.isNotEmpty()) {
-                                sb.appendLine("      headers:")
-                                sb.appendLine("        Host: \"${escapeYaml(node.host)}\"")
-                            }
-                        }
-                    }
+                    appendClashTransport(sb, node)
                 }
                 "ss", "shadowsocks" -> {
                     sb.appendLine("    cipher: \"${escapeYaml(if (node.cipher.isNotEmpty()) node.cipher else "aes-256-gcm")}\"")
@@ -583,12 +632,18 @@ object ClashConfigGenerator {
                     sb.appendLine("    udp: true")
                     sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                    if (node.alpn.isNotEmpty()) sb.appendLine("    alpn: [\"${node.alpn.replace(",", "\", \"")}\"]")
+                    appendClashTransport(sb, node)
                 }
                 "hysteria2", "hy2" -> {
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    udp: true")
                     sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                    if (node.obfs.isNotEmpty()) {
+                        sb.appendLine("    obfs: \"${escapeYaml(node.obfs)}\"")
+                        if (node.obfsPassword.isNotEmpty()) sb.appendLine("    obfs-password: \"${escapeYaml(node.obfsPassword)}\"")
+                    }
                 }
                 "tuic" -> {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
@@ -673,6 +728,42 @@ object ClashConfigGenerator {
         sb.appendLine("  - MATCH,🐟 漏网之鱼")
 
         return sb.toString()
+    }
+
+    private fun appendClashTransport(sb: StringBuilder, node: ProxyNode) {
+        val net = node.network.lowercase()
+        if (net.isEmpty() || net == "tcp") return
+
+        when (net) {
+            "ws", "websocket" -> {
+                sb.appendLine("    network: ws")
+                sb.appendLine("    ws-opts:")
+                if (node.path.isNotEmpty()) sb.appendLine("      path: \"${escapeYaml(node.path)}\"")
+                if (node.host.isNotEmpty()) {
+                    sb.appendLine("      headers:")
+                    sb.appendLine("        Host: \"${escapeYaml(node.host)}\"")
+                }
+            }
+            "grpc" -> {
+                sb.appendLine("    network: grpc")
+                val serviceName = if (node.grpcServiceName.isNotEmpty()) node.grpcServiceName else node.path
+                if (serviceName.isNotEmpty()) {
+                    sb.appendLine("    grpc-opts:")
+                    sb.appendLine("      grpc-service-name: \"${escapeYaml(serviceName)}\"")
+                }
+            }
+            "http", "httpupgrade" -> {
+                sb.appendLine("    network: http")
+                if (node.path.isNotEmpty() || node.host.isNotEmpty()) {
+                    sb.appendLine("    http-opts:")
+                    if (node.path.isNotEmpty()) sb.appendLine("      path: [\"${escapeYaml(node.path)}\"]")
+                    if (node.host.isNotEmpty()) {
+                        sb.appendLine("      headers:")
+                        sb.appendLine("        Host: [\"${escapeYaml(node.host)}\"]")
+                    }
+                }
+            }
+        }
     }
 
     private fun mapClashType(protocol: String): String {

@@ -61,4 +61,30 @@ class ExampleRobolectricTest {
         assertTrue(yaml.contains("GEOSITE,geolocation-!cn,🌐 非中国"))
         assertTrue(yaml.contains("MATCH,🐟 漏网之鱼"))
     }
+
+    @Test
+    fun `test vless reality parser and generators`() {
+        val vlessUri = "vless://44444444-4444-4444-4444-444444444444@reality.example.com:443?type=tcp&security=reality&pbk=1111111111111111111111111111111111111111111&fp=chrome&sni=reality.example.com&sid=abcdef12&flow=xtls-rprx-vision#US-Reality"
+        val nodes = com.example.data.parser.SubscriptionParser.parseContent(vlessUri)
+        assertEquals(1, nodes.size)
+        val node = nodes[0]
+        assertEquals("US-Reality", node.name)
+        assertEquals("vless", node.protocol)
+        assertEquals("reality.example.com", node.server)
+        assertEquals(443, node.port)
+        assertEquals("xtls-rprx-vision", node.flow)
+        assertEquals("chrome", node.fingerprint)
+        assertEquals("1111111111111111111111111111111111111111111", node.realityPublicKey)
+
+        val singboxJson = com.example.data.generator.SingBoxConfigGenerator.generateJson(nodes)
+        assertTrue(singboxJson.contains("reality"))
+        assertTrue(singboxJson.contains("public_key"))
+        assertTrue(singboxJson.contains("xtls-rprx-vision"))
+        assertTrue(singboxJson.contains("xudp"))
+
+        val clashYaml = ClashConfigGenerator.generateYaml(nodes)
+        assertTrue(clashYaml.contains("reality-opts"))
+        assertTrue(clashYaml.contains("public-key"))
+        assertTrue(clashYaml.contains("flow: \"xtls-rprx-vision\""))
+    }
 }
