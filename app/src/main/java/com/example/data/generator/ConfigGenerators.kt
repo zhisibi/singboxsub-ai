@@ -43,7 +43,7 @@ object SingBoxConfigGenerator {
                     put("tag", "dns-remote")
                     put("server", "1.1.1.1")
                     put("path", "/dns-query")
-                    put("detour", "🚀 节点选择")
+                    put("detour", "🎯 直连")
                 })
                 put(JSONObject().apply {
                     put("type", "udp")
@@ -169,6 +169,13 @@ object SingBoxConfigGenerator {
                     put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs")
                     put("download_detour", "🎯 直连")
                 })
+                put(JSONObject().apply {
+                    put("type", "remote")
+                    put("tag", "geosite-category-ads-all")
+                    put("format", "binary")
+                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs")
+                    put("download_detour", "🎯 直连")
+                })
             }
             put("rule_set", ruleSet)
 
@@ -199,6 +206,10 @@ object SingBoxConfigGenerator {
                         put("outbound", "🎯 直连")
                     })
                     rules.put(JSONObject().apply {
+                        put("rule_set", JSONArray().apply { put("geosite-category-ads-all") })
+                        put("outbound", "🛑 拦截")
+                    })
+                    rules.put(JSONObject().apply {
                         put("rule_set", JSONArray().apply {
                             put("geosite-cn")
                             put("geoip-cn")
@@ -217,6 +228,7 @@ object SingBoxConfigGenerator {
                             put("weibo.com")
                             put("amap.com")
                             put("bilibili.com")
+                            put("bytedance.com")
                         })
                         put("outbound", "🎯 直连")
                     })
@@ -292,6 +304,16 @@ object SingBoxConfigGenerator {
             }
             "hysteria2", "hy2" -> {
                 ob.put("type", "hysteria2")
+                ob.put("password", node.uuidOrPassword)
+                val tlsObj = JSONObject().apply {
+                    put("enabled", true)
+                    put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
+                    put("insecure", node.allowInsecure)
+                }
+                ob.put("tls", tlsObj)
+            }
+            "anytls" -> {
+                ob.put("type", "anytls")
                 ob.put("password", node.uuidOrPassword)
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
@@ -407,6 +429,11 @@ object ClashConfigGenerator {
                     sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
+                "anytls" -> {
+                    sb.appendLine("    password: \"${node.uuidOrPassword}\"")
+                    sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                }
                 "socks", "socks5" -> {
                     if (node.host.isNotEmpty()) sb.appendLine("    username: \"${node.host}\"")
                     if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${node.uuidOrPassword}\"")
@@ -440,7 +467,9 @@ object ClashConfigGenerator {
 
         sb.appendLine()
         sb.appendLine("rules:")
-        sb.appendLine("  - GEOIP,private,DIRECT")
+        sb.appendLine("  - GEOIP,private,DIRECT,no-resolve")
+        sb.appendLine("  - GEOSITE,private,DIRECT")
+        sb.appendLine("  - GEOSITE,category-ads-all,REJECT")
         sb.appendLine("  - GEOSITE,cn,DIRECT")
         sb.appendLine("  - GEOIP,cn,DIRECT")
         sb.appendLine("  - MATCH,🚀 节点选择")
@@ -455,6 +484,7 @@ object ClashConfigGenerator {
             "ss", "shadowsocks" -> "ss"
             "trojan" -> "trojan"
             "hysteria2", "hy2" -> "hysteria2"
+            "anytls" -> "anytls"
             "socks", "socks5" -> "socks5"
             else -> "http"
         }
@@ -475,7 +505,7 @@ object Base64Generator {
 
     fun generateBase64(nodes: List<ProxyNode>): String {
         val targetList = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
-        val uris = targetList.joinToString("\n") { it.rawUri }
+        val uris = targetList.joinToString("\n") { if (it.rawUri.isNotBlank()) it.rawUri else it.toUri() }
         return Base64.encodeToString(uris.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP or Base64.DEFAULT)
     }
 }

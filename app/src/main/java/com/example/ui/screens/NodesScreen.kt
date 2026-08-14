@@ -93,7 +93,7 @@ fun NodesScreen(viewModel: MainViewModel) {
     var showDeleteInvalidConfirm by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
 
-    val protocols = listOf("All", "vless", "vmess", "ss", "trojan", "hysteria2", "socks", "http")
+    val protocols = listOf("All", "vless", "vmess", "ss", "trojan", "hysteria2", "anytls", "socks", "http")
 
     val filteredAndSortedNodes = remember(nodes, searchQuery, selectedProtocol, selectedSortMode) {
         val filtered = nodes.filter { node ->
@@ -386,7 +386,7 @@ fun NodesScreen(viewModel: MainViewModel) {
                         val shareUrl = if (node.rawUri.isNotBlank()) {
                             node.rawUri
                         } else {
-                            "${node.protocol}://${node.uuidOrPassword}@${node.server}:${node.port}#${Uri.encode(node.name)}"
+                            node.toUri()
                         }
                         copyToClipboard(shareUrl, node.name)
                     },
@@ -661,6 +661,7 @@ fun getProtocolColor(protocol: String): Color {
         "ss", "shadowsocks" -> Color(0xFF059669)
         "trojan" -> Color(0xFFDC2626)
         "hysteria2", "hy2" -> Color(0xFFD97706)
+        "anytls" -> Color(0xFF8B5CF6)
         else -> Color(0xFF475569)
     }
 }

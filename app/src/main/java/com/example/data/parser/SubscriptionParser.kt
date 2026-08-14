@@ -68,7 +68,7 @@ object SubscriptionParser {
                         val tls = currentProxyProps["tls"]?.toBoolean() ?: (type == "vless" || type == "trojan" || type == "hysteria2" || type == "tuic")
                         val insecure = currentProxyProps["skip-cert-verify"]?.toBoolean() ?: false
 
-                        val validTypes = setOf("ss", "ssr", "vmess", "vless", "trojan", "hysteria", "hysteria2", "hy2", "socks5", "socks", "http", "snell", "tuic", "wireguard", "shadowsocks")
+                        val validTypes = setOf("ss", "ssr", "vmess", "vless", "trojan", "hysteria", "hysteria2", "hy2", "socks5", "socks", "http", "snell", "tuic", "wireguard", "shadowsocks", "anytls")
                         if (validTypes.contains(type.lowercase()) && server.isNotBlank() && !server.contains("/") && !server.contains("://")) {
                             val password = currentProxyProps["password"] ?: currentProxyProps["uuid"] ?: currentProxyProps["passwd"] ?: ""
                             val cipher = currentProxyProps["cipher"] ?: "aes-256-gcm"
@@ -142,6 +142,7 @@ object SubscriptionParser {
                 uri.startsWith("ss://", ignoreCase = true) -> parseShadowsocks(uri, subscriptionId)
                 uri.startsWith("trojan://", ignoreCase = true) -> parseTrojan(uri, subscriptionId)
                 uri.startsWith("hy2://", ignoreCase = true) || uri.startsWith("hysteria2://", ignoreCase = true) -> parseHysteria2(uri, subscriptionId)
+                uri.startsWith("anytls://", ignoreCase = true) -> parseAnyTls(uri, subscriptionId)
                 uri.startsWith("socks5://", ignoreCase = true) || uri.startsWith("socks://", ignoreCase = true) -> parseSocks(uri, subscriptionId)
                 uri.startsWith("http://", ignoreCase = true) || uri.startsWith("https://", ignoreCase = true) -> parseHttp(uri, subscriptionId)
                 else -> null
@@ -334,6 +335,40 @@ object SubscriptionParser {
             subscriptionId = subscriptionId,
             name = name,
             protocol = "hysteria2",
+            server = server,
+            port = port,
+            uuidOrPassword = password,
+            tls = true,
+            sni = sni,
+            allowInsecure = insecure,
+            rawUri = uri
+        )
+    }
+
+    private fun parseAnyTls(uri: String, subscriptionId: Long): ProxyNode? {
+        val main = uri.removePrefix("anytls://").removePrefix("ANYTLS://")
+        val nameSplit = main.split("#", limit = 2)
+        val name = if (nameSplit.size > 1) urlDecode(nameSplit[1]) else "AnyTLS Node"
+        val body = nameSplit[0]
+
+        val querySplit = body.split("?", limit = 2)
+        val userInfoAndAddress = querySplit[0]
+        val queryParams = if (querySplit.size > 1) parseQueryParams(querySplit[1]) else emptyMap()
+
+        val atSplit = userInfoAndAddress.split("@", limit = 2)
+        if (atSplit.size < 2) return null
+        val password = atSplit[0]
+        val hostPort = atSplit[1].split(":", limit = 2)
+
+        val server = hostPort[0]
+        val port = hostPort.getOrNull(1)?.toIntOrNull() ?: 443
+        val sni = queryParams["sni"] ?: queryParams["peer"] ?: server
+        val insecure = queryParams["insecure"] == "1" || queryParams["allow_insecure"] == "1" || queryParams["skip-cert-verify"] == "true"
+
+        return ProxyNode(
+            subscriptionId = subscriptionId,
+            name = name,
+            protocol = "anytls",
             server = server,
             port = port,
             uuidOrPassword = password,

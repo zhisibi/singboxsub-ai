@@ -333,16 +333,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val idsToDelete = mutableListOf<Long>()
 
             for (node in allNodes) {
-                val key = if (node.rawUri.isNotBlank()) {
-                    node.rawUri.trim()
-                } else {
-                    "${node.protocol.lowercase()}://${node.uuidOrPassword}@${node.server.lowercase()}:${node.port}${node.path}${node.sni}"
-                }
+                // 1. Core connection configuration fingerprint (ignoring name & remark tag)
+                val coreKey = "${node.protocol.trim().lowercase()}://${node.uuidOrPassword.trim()}@${node.server.trim().lowercase()}:${node.port}?net=${node.network.trim().lowercase()}&path=${node.path.trim().lowercase()}&sni=${node.sni.trim().lowercase()}&host=${node.host.trim().lowercase()}&cipher=${node.cipher.trim().lowercase()}"
 
-                if (seenKeys.contains(key)) {
+                // 2. Base raw URI (stripping #remark tag)
+                val rawBaseUri = if (node.rawUri.isNotBlank()) {
+                    node.rawUri.substringBefore("#").trim().lowercase()
+                } else ""
+
+                // 3. Name + Server + Port fallback
+                val nameServerKey = if (node.name.isNotBlank() && node.server.isNotBlank()) {
+                    "${node.name.trim().lowercase()}@${node.server.trim().lowercase()}:${node.port}"
+                } else ""
+
+                val isDuplicate = seenKeys.contains(coreKey) ||
+                        (rawBaseUri.length >= 10 && seenKeys.contains(rawBaseUri)) ||
+                        (nameServerKey.isNotBlank() && seenKeys.contains(nameServerKey))
+
+                if (isDuplicate) {
                     idsToDelete.add(node.id)
                 } else {
-                    seenKeys.add(key)
+                    seenKeys.add(coreKey)
+                    if (rawBaseUri.length >= 10) seenKeys.add(rawBaseUri)
+                    if (nameServerKey.isNotBlank()) seenKeys.add(nameServerKey)
                 }
             }
 
@@ -350,7 +363,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 idsToDelete.forEach { id ->
                     db.proxyNodeDao().deleteNodeById(id)
                 }
-                _statusMessage.value = if (_isChineseMode.value) "成功删除 ${idsToDelete.size} 个重复节点" else "Removed ${idsToDelete.size} duplicate nodes"
+                _statusMessage.value = if (_isChineseMode.value) "成功清理 ${idsToDelete.size} 个重复节点" else "Removed ${idsToDelete.size} duplicate nodes"
             } else {
                 _statusMessage.value = if (_isChineseMode.value) "未发现重复节点" else "No duplicate nodes found"
             }

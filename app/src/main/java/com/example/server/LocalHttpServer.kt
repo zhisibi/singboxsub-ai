@@ -212,7 +212,8 @@ class LocalHttpServer(private val context: Context) {
                                 logAccess(clientIp, path, "base64", userAgent, 200)
                             }
                             else -> { // singbox
-                                val json = SingBoxConfigGenerator.generateJson(targetNodes, inboundPort = 2080)
+                                val subMode = queryParams["mode"] ?: "Rule"
+                                val json = SingBoxConfigGenerator.generateJson(targetNodes, routingMode = subMode, inboundPort = 2080)
                                 sendRawResponse(outputStream, 200, "OK", "application/json; charset=UTF-8", json, filename = "singbox.json")
                                 logAccess(clientIp, path, "singbox", userAgent, 200)
                             }

@@ -122,16 +122,16 @@ fun CustomSubDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.92f),
-            shape = RoundedCornerShape(24.dp),
+                .fillMaxWidth(0.96f)
+                .fillMaxHeight(0.94f),
+            shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(18.dp)
+                    .padding(12.dp)
             ) {
                 // Header
                 Row(
@@ -144,124 +144,129 @@ fun CustomSubDialog(
                             Icons.Default.Tune,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = if (isZh) "自定义生成订阅链接" else "Custom Sub Generator",
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // Subscription Name Field
-                OutlinedTextField(
-                    value = customNameInput,
-                    onValueChange = { customNameInput = it },
-                    label = { Text(if (isZh) "自定义订阅名称" else "Custom Subscription Name") },
-                    placeholder = { Text(if (isZh) "例如: 香港+日本专线订阅" else "e.g. HK & JP Nodes Only") },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                    singleLine = true,
+                // Compact Row for Subscription Name & Token Fields
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedTextField(
+                        value = customNameInput,
+                        onValueChange = { customNameInput = it },
+                        label = { Text(if (isZh) "订阅名称" else "Sub Name", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text(if (isZh) "如: 香港+日本专线" else "HK & JP") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .testTag("custom_sub_name_input")
+                    )
+
+                    OutlinedTextField(
+                        value = tokenInput,
+                        onValueChange = {
+                            tokenInput = it
+                            viewModel.setCustomToken(it)
+                        },
+                        label = { Text(if (isZh) "Token (可选)" else "Token", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("mytoken") },
+                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(0.8f)
+                            .testTag("custom_sub_token_input")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Format & Host Combined Scrollable Row
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("custom_sub_name_input")
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Custom Token Field
-                OutlinedTextField(
-                    value = tokenInput,
-                    onValueChange = {
-                        tokenInput = it
-                        viewModel.setCustomToken(it)
-                    },
-                    label = { Text(if (isZh) "鉴权 Token (可选)" else "Security Token (Optional)") },
-                    placeholder = { Text("mytoken") },
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("custom_sub_token_input")
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Format & Host Options
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = if (isZh) "订阅格式与监听地址:" else "Format & Server Address:",
-                        style = MaterialTheme.typography.labelLarge,
+                        text = if (isZh) "格式:" else "Format:",
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
+                    FilterChip(
+                        selected = selectedFormat == "singbox",
+                        onClick = { selectedFormat = "singbox" },
+                        label = { Text("Sing-Box", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                    FilterChip(
+                        selected = selectedFormat == "mihomo",
+                        onClick = { selectedFormat = "mihomo" },
+                        label = { Text("Mihomo/Clash", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                    FilterChip(
+                        selected = selectedFormat == "base64",
+                        onClick = { selectedFormat = "base64" },
+                        label = { Text("Base64", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp)
+                    )
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(
-                            selected = selectedFormat == "singbox",
-                            onClick = { selectedFormat = "singbox" },
-                            label = { Text("Sing-Box 1.14+", maxLines = 1) }
-                        )
-                        FilterChip(
-                            selected = selectedFormat == "mihomo",
-                            onClick = { selectedFormat = "mihomo" },
-                            label = { Text("Mihomo / Clash", maxLines = 1) }
-                        )
-                        FilterChip(
-                            selected = selectedFormat == "base64",
-                            onClick = { selectedFormat = "base64" },
-                            label = { Text("Base64 通用", maxLines = 1) }
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(6.dp))
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FilterChip(
-                            selected = selectedHost == "127.0.0.1",
-                            onClick = { selectedHost = "127.0.0.1" },
-                            label = { Text(if (isZh) "本机 (127.0.0.1)" else "Local (127.0.0.1)", maxLines = 1) }
-                        )
-                        FilterChip(
-                            selected = selectedHost == "LAN",
-                            onClick = { selectedHost = "LAN" },
-                            label = { Text(if (isZh) "局域网 ($localIp)" else "LAN ($localIp)", maxLines = 1) }
-                        )
-                    }
+                    Text(
+                        text = if (isZh) "地址:" else "Host:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    FilterChip(
+                        selected = selectedHost == "127.0.0.1",
+                        onClick = { selectedHost = "127.0.0.1" },
+                        label = { Text("127.0.0.1", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                    FilterChip(
+                        selected = selectedHost == "LAN",
+                        onClick = { selectedHost = "LAN" },
+                        label = { Text(if (isZh) "局域网" else "LAN", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp)
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-                Divider()
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // Search & Filter Section
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text(if (isZh) "搜索筛选节点关键字 (名称/服务器/协议/端口)" else "Filter nodes (Name/Server/Protocol/Port)") },
-                    placeholder = { Text(if (isZh) "例如: 香港, vless, 443..." else "e.g. HK, vless, 443...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    label = { Text(if (isZh) "搜索节点 (名称/IP/协议/端口)" else "Search nodes (Name/IP/Protocol/Port)", style = MaterialTheme.typography.labelSmall) },
+                    placeholder = { Text(if (isZh) "输入关键字如: 香港, vless, 443..." else "Search e.g. HK, vless...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear search", modifier = Modifier.size(18.dp))
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search", modifier = Modifier.size(16.dp))
                             }
                         }
                     },
@@ -271,7 +276,7 @@ fun CustomSubDialog(
                         .testTag("custom_sub_search_input")
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // Quick Filter Tag Chips
                 val quickTags = remember { listOf("香港", "日本", "美国", "新加坡", "台湾", "vless", "vmess", "hy2") }
@@ -279,12 +284,12 @@ fun CustomSubDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isZh) "快捷标签:" else "Quick Tags:",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = if (isZh) "快捷:" else "Tags:",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     quickTags.forEach { tag ->
@@ -293,12 +298,15 @@ fun CustomSubDialog(
                             onClick = {
                                 searchQuery = if (searchQuery.equals(tag, ignoreCase = true)) "" else tag
                             },
-                            label = { Text(tag, style = MaterialTheme.typography.labelSmall) }
+                            label = { Text(tag, style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(26.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+                Divider()
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // Node Selection Header
                 Row(
