@@ -81,7 +81,7 @@ fun ConfigScreen(viewModel: MainViewModel) {
 
     var portInput by remember(port) { mutableStateOf(port.toString()) }
     var tokenInput by remember(token) { mutableStateOf(token) }
-    var previewType by remember { mutableStateOf("SingBox") } // SingBox, Mihomo
+    var previewType by remember { mutableStateOf("SingBox114") } // SingBox114, SingBox113, Mihomo
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -100,10 +100,10 @@ fun ConfigScreen(viewModel: MainViewModel) {
     }
 
     val generatedConfig = remember(nodes, routingMode, previewType, port) {
-        if (previewType == "Mihomo" || previewType == "Clash") {
-            ClashConfigGenerator.generateYaml(nodes, isMihomo = true)
-        } else {
-            SingBoxConfigGenerator.generateJson(nodes, routingMode = routingMode, inboundPort = 2080)
+        when (previewType) {
+            "Mihomo", "Clash" -> ClashConfigGenerator.generateYaml(nodes, isMihomo = true)
+            "SingBox113" -> SingBoxConfigGenerator.generateJson(nodes, routingMode = routingMode, inboundPort = 2080, version = "1.13")
+            else -> SingBoxConfigGenerator.generateJson(nodes, routingMode = routingMode, inboundPort = 2080, version = "1.14")
         }
     }
 
@@ -411,13 +411,17 @@ fun ConfigScreen(viewModel: MainViewModel) {
                     )
                 }
 
-                Row {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     FilterChip(
-                        selected = previewType == "SingBox",
-                        onClick = { previewType = "SingBox" },
-                        label = { Text("Sing-Box", style = MaterialTheme.typography.labelSmall) }
+                        selected = previewType == "SingBox114",
+                        onClick = { previewType = "SingBox114" },
+                        label = { Text("Sing-Box 1.14+", style = MaterialTheme.typography.labelSmall) }
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    FilterChip(
+                        selected = previewType == "SingBox113",
+                        onClick = { previewType = "SingBox113" },
+                        label = { Text("Sing-Box 1.13", style = MaterialTheme.typography.labelSmall) }
+                    )
                     FilterChip(
                         selected = previewType == "Mihomo",
                         onClick = { previewType = "Mihomo" },

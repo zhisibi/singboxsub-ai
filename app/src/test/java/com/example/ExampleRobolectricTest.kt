@@ -80,7 +80,7 @@ class ExampleRobolectricTest {
         assertTrue(singboxJson.contains("reality"))
         assertTrue(singboxJson.contains("public_key"))
         assertTrue(singboxJson.contains("xtls-rprx-vision"))
-        assertTrue(singboxJson.contains("xudp"))
+        assertTrue(singboxJson.contains("tcp_fast_open"))
 
         val clashYaml = ClashConfigGenerator.generateYaml(nodes)
         assertTrue(clashYaml.contains("reality-opts"))

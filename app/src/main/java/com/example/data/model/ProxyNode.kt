@@ -36,6 +36,9 @@ data class ProxyNode(
     fun toUri(): String {
         if (rawUri.isNotBlank()) return rawUri
         val encodedName = try { java.net.URLEncoder.encode(name, "UTF-8") } catch (e: Exception) { name }
+        val cleanServer = server.removePrefix("[").removeSuffix("]").trim()
+        val formattedHost = if (cleanServer.contains(":")) "[$cleanServer]" else cleanServer
+        val effectiveSni = if (sni.isNotBlank()) sni.removePrefix("[").removeSuffix("]") else ""
         return when (protocol.lowercase()) {
             "vless" -> {
                 val securityStr = when {
@@ -43,10 +46,10 @@ data class ProxyNode(
                     tls -> "tls"
                     else -> "none"
                 }
-                val sb = StringBuilder("vless://${uuidOrPassword}@${server}:${port}?")
+                val sb = StringBuilder("vless://${uuidOrPassword}@${formattedHost}:${port}?")
                 sb.append("type=${network.ifBlank { "tcp" }}")
                 sb.append("&security=$securityStr")
-                if (sni.isNotBlank()) sb.append("&sni=$sni")
+                if (effectiveSni.isNotBlank()) sb.append("&sni=$effectiveSni")
                 if (host.isNotBlank()) sb.append("&host=$host")
                 if (path.isNotBlank()) sb.append("&path=$path")
                 if (flow.isNotBlank()) sb.append("&flow=$flow")
@@ -63,7 +66,7 @@ data class ProxyNode(
                 val vmessJson = org.json.JSONObject().apply {
                     put("v", "2")
                     put("ps", name)
-                    put("add", server)
+                    put("add", cleanServer)
                     put("port", port)
                     put("id", uuidOrPassword)
                     put("aid", alterId)
@@ -73,18 +76,18 @@ data class ProxyNode(
                     put("host", host)
                     put("path", path)
                     put("tls", if (tls) "tls" else "")
-                    put("sni", sni)
+                    put("sni", effectiveSni)
                 }
                 val b64 = android.util.Base64.encodeToString(vmessJson.toString().toByteArray(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP)
                 "vmess://${b64}"
             }
             "ss", "shadowsocks" -> {
                 val userPass = android.util.Base64.encodeToString("${cipher.ifBlank { "aes-256-gcm" }}:${uuidOrPassword}".toByteArray(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP)
-                "ss://${userPass}@${server}:${port}#${encodedName}"
+                "ss://${userPass}@${formattedHost}:${port}#${encodedName}"
             }
             "trojan" -> {
-                val sb = StringBuilder("trojan://${uuidOrPassword}@${server}:${port}?")
-                sb.append("sni=${if (sni.isNotBlank()) sni else server}")
+                val sb = StringBuilder("trojan://${uuidOrPassword}@${formattedHost}:${port}?")
+                if (effectiveSni.isNotBlank()) sb.append("sni=$effectiveSni")
                 if (network.isNotBlank() && network != "tcp") sb.append("&type=$network")
                 if (host.isNotBlank()) sb.append("&host=$host")
                 if (path.isNotBlank()) sb.append("&path=$path")
@@ -95,7 +98,8 @@ data class ProxyNode(
             }
             "hysteria2", "hy2" -> {
                 val insecureVal = if (allowInsecure) "1" else "0"
-                val sb = StringBuilder("hy2://${uuidOrPassword}@${server}:${port}?sni=${if (sni.isNotBlank()) sni else server}&insecure=${insecureVal}")
+                val sb = StringBuilder("hy2://${uuidOrPassword}@${formattedHost}:${port}?insecure=${insecureVal}")
+                if (effectiveSni.isNotBlank()) sb.append("&sni=$effectiveSni")
                 if (obfs.isNotBlank()) sb.append("&obfs=$obfs")
                 if (obfsPassword.isNotBlank()) sb.append("&obfs-password=$obfsPassword")
                 sb.append("#$encodedName")
@@ -103,20 +107,21 @@ data class ProxyNode(
             }
             "anytls" -> {
                 val insecureVal = if (allowInsecure) "1" else "0"
-                "anytls://${uuidOrPassword}@${server}:${port}?sni=${if (sni.isNotBlank()) sni else server}&insecure=${insecureVal}#${encodedName}"
+                val sniPart = if (effectiveSni.isNotBlank()) "&sni=$effectiveSni" else ""
+                "anytls://${uuidOrPassword}@${formattedHost}:${port}?insecure=${insecureVal}${sniPart}#${encodedName}"
             }
             "socks", "socks5" -> {
                 if (host.isNotBlank()) {
-                    "socks5://${host}:${uuidOrPassword}@${server}:${port}#${encodedName}"
+                    "socks5://${host}:${uuidOrPassword}@${formattedHost}:${port}#${encodedName}"
                 } else {
-                    "socks5://${server}:${port}#${encodedName}"
+                    "socks5://${formattedHost}:${port}#${encodedName}"
                 }
             }
             else -> {
                 if (host.isNotBlank()) {
-                    "http://${host}:${uuidOrPassword}@${server}:${port}#${encodedName}"
+                    "http://${host}:${uuidOrPassword}@${formattedHost}:${port}#${encodedName}"
                 } else {
-                    "http://${server}:${port}#${encodedName}"
+                    "http://${formattedHost}:${port}#${encodedName}"
                 }
             }
         }

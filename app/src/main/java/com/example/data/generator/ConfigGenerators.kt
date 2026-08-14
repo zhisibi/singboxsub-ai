@@ -6,6 +6,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 
+fun isIpAddress(str: String): Boolean {
+    val clean = str.removePrefix("[").removeSuffix("]").trim()
+    if (clean.isEmpty()) return false
+    if (clean.contains(":")) return true // IPv6
+    val parts = clean.split(".")
+    if (parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 }) return true // IPv4
+    return false
+}
+
 object SingBoxConfigGenerator {
 
     private val fallbackDummyNode = ProxyNode(
@@ -26,17 +35,11 @@ object SingBoxConfigGenerator {
         version: String = "1.14" // "1.14" (latest) or "1.13" (<=1.13 legacy)
     ): String {
         val isLegacy113 = version.trim() == "1.13" || version.trim().startsWith("1.13") || version.trim() == "legacy" || version.trim() == "1.13.0"
-        val enabledNodes = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
+        val enabledNodes = if (nodes.isEmpty()) listOf(fallbackDummyNode) else nodes
         val root = JSONObject()
 
-        // 0. log
-        val log = JSONObject().apply {
-            put("level", "info")
-            put("timestamp", true)
-        }
-        root.put("log", log)
-
-        // 1. http_clients (only in 1.14+)
+        // 0. log (optional, only if needed or keep minimal, but user format starts directly with http_clients)
+        // 1. http_clients (only in 1.14+, MUST NOT be in 1.13)
         if (!isLegacy113) {
             val httpClients = JSONArray().apply {
                 put(JSONObject().apply {
@@ -50,61 +53,40 @@ object SingBoxConfigGenerator {
         // 2. dns configuration
         val dns = JSONObject().apply {
             val servers = JSONArray().apply {
-                if (isLegacy113) {
-                    put(JSONObject().apply {
-                        put("tag", "dns_proxy")
-                        put("address", "1.1.1.1")
-                        put("detour", "🚀 节点选择")
-                        put("address_resolver", "dns_resolver")
-                    })
-                    put(JSONObject().apply {
-                        put("tag", "dns_direct")
-                        put("address", "https://dns.alidns.com/dns-query")
-                        put("detour", "DIRECT")
-                        put("address_resolver", "dns_resolver")
-                    })
-                    put(JSONObject().apply {
-                        put("tag", "dns_resolver")
-                        put("address", "223.5.5.5")
-                        put("detour", "DIRECT")
-                    })
-                    put(JSONObject().apply {
-                        put("tag", "dns_fakeip")
-                        put("address", "fakeip")
-                    })
-                } else {
-                    put(JSONObject().apply {
-                        put("type", "tcp")
-                        put("tag", "dns_proxy")
-                        put("server", "1.1.1.1")
-                        put("detour", "🚀 节点选择")
-                        put("domain_resolver", "dns_resolver")
-                    })
-                    put(JSONObject().apply {
-                        put("type", "https")
-                        put("tag", "dns_direct")
-                        put("server", "dns.alidns.com")
-                        put("domain_resolver", "dns_resolver")
-                    })
-                    put(JSONObject().apply {
-                        put("type", "udp")
-                        put("tag", "dns_resolver")
-                        put("server", "223.5.5.5")
-                    })
-                    put(JSONObject().apply {
-                        put("type", "fakeip")
-                        put("tag", "dns_fakeip")
-                        put("inet4_range", "198.18.0.0/15")
-                        put("inet6_range", "fc00::/18")
-                    })
-                }
+                put(JSONObject().apply {
+                    put("type", "tcp")
+                    put("tag", "dns_proxy")
+                    put("server", "1.1.1.1")
+                    put("detour", "🚀 节点选择")
+                    put("domain_resolver", "dns_resolver")
+                })
+                put(JSONObject().apply {
+                    put("type", "https")
+                    put("tag", "dns_direct")
+                    put("server", "dns.alidns.com")
+                    put("domain_resolver", "dns_resolver")
+                })
+                put(JSONObject().apply {
+                    put("type", "udp")
+                    put("tag", "dns_resolver")
+                    put("server", "223.5.5.5")
+                })
+                put(JSONObject().apply {
+                    put("type", "fakeip")
+                    put("tag", "dns_fakeip")
+                    put("inet4_range", "198.18.0.0/15")
+                    put("inet6_range", "fc00::/18")
+                })
             }
             put("servers", servers)
 
             val dnsRules = JSONArray().apply {
                 put(JSONObject().apply {
                     put("rule_set", "geolocation-!cn")
-                    put("query_type", JSONArray().apply { put("A"); put("AAAA") })
+                    put("query_type", JSONArray().apply {
+                        put("A")
+                        put("AAAA")
+                    })
                     put("server", "dns_fakeip")
                 })
                 put(JSONObject().apply {
@@ -113,7 +95,11 @@ object SingBoxConfigGenerator {
                     put("server", "dns_proxy")
                 })
                 put(JSONObject().apply {
-                    put("query_type", JSONArray().apply { put("A"); put("AAAA"); put("CNAME") })
+                    put("query_type", JSONArray().apply {
+                        put("A")
+                        put("AAAA")
+                        put("CNAME")
+                    })
                     put("invert", true)
                     put("action", "predefined")
                     put("rcode", "REFUSED")
@@ -121,14 +107,6 @@ object SingBoxConfigGenerator {
             }
             put("rules", dnsRules)
             put("final", "dns_direct")
-
-            if (isLegacy113) {
-                put("fakeip", JSONObject().apply {
-                    put("enabled", true)
-                    put("inet4_range", "198.18.0.0/15")
-                    put("inet6_range", "fc00::/18")
-                })
-            }
         }
         root.put("dns", dns)
 
@@ -197,8 +175,9 @@ object SingBoxConfigGenerator {
             put("tag", "DIRECT")
         })
 
+        // In Sing-Box <= 1.12 legacy DNS outbound was used, but in 1.13 and 1.14 hijack-dns action is supported.
         // Additional policy group selectors matching user template
-        val extraSelectors = listOf("🔒 国内服务", "🌐 非中国", "🏠 私有网络", "🐟 漏网之鱼")
+        val extraSelectors = listOf("🏠 私有网络", "🔒 国内服务", "🌐 非中国", "🐟 漏网之鱼")
         extraSelectors.forEach { selName ->
             outbounds.put(JSONObject().apply {
                 put("type", "selector")
@@ -219,7 +198,7 @@ object SingBoxConfigGenerator {
 
         // Node outbounds
         enabledNodes.forEach { node ->
-            val ob = buildNodeOutbound(node)
+            val ob = buildNodeOutbound(node, isLegacy113 = isLegacy113)
             if (ob != null) {
                 outbounds.put(ob)
             }
@@ -319,41 +298,50 @@ object SingBoxConfigGenerator {
                 put("enabled", true)
                 put("store_fakeip", true)
             })
+            if (isLegacy113) {
+                put("clash_api", JSONObject().apply {
+                    put("external_controller", "127.0.0.1:9090")
+                    put("external_ui", "ui")
+                    put("external_ui_download_url", "https://gh-proxy.com/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip")
+                    put("external_ui_download_detour", "🚀 节点选择")
+                    put("default_mode", "rule")
+                })
+            }
         }
         root.put("experimental", experimental)
 
         return root.toString(2)
     }
 
-    private fun buildNodeOutbound(node: ProxyNode): JSONObject? {
+    private fun buildNodeOutbound(node: ProxyNode, isLegacy113: Boolean = false): JSONObject? {
         val ob = JSONObject()
         ob.put("tag", node.name)
-        // Clean server address for Sing-Box if surrounded by brackets
-        val cleanServer = node.server.removePrefix("[").removeSuffix("]")
+        val cleanServer = node.server.removePrefix("[").removeSuffix("]").trim()
         ob.put("server", cleanServer)
         ob.put("server_port", node.port)
 
-        val effectiveSni = if (node.sni.isNotEmpty()) node.sni.removePrefix("[").removeSuffix("]") else cleanServer
+        val rawSni = node.sni.removePrefix("[").removeSuffix("]").trim()
+        val effectiveSni = if (rawSni.isNotBlank()) rawSni else if (!isIpAddress(cleanServer)) cleanServer else ""
 
         when (node.protocol.lowercase()) {
             "vless" -> {
                 ob.put("type", "vless")
                 ob.put("uuid", node.uuidOrPassword)
-                if (node.flow.isNotEmpty()) ob.put("flow", node.flow)
-                ob.put("packet_encoding", "xudp")
+                if (node.flow.isNotBlank() && (node.network.isBlank() || node.network.lowercase() == "tcp") && (node.tls || node.realityPublicKey.isNotBlank())) {
+                    ob.put("flow", node.flow)
+                }
+                if (node.network.isBlank() || node.network.lowercase() == "tcp") {
+                    ob.put("network", "tcp")
+                    ob.put("tcp_fast_open", false)
+                } else if (!isLegacy113) {
+                    ob.put("packet_encoding", "xudp")
+                }
 
                 if (node.tls || node.realityPublicKey.isNotEmpty()) {
                     val tlsObj = JSONObject().apply {
                         put("enabled", true)
-                        put("server_name", effectiveSni)
-                        if (node.allowInsecure) put("insecure", true)
-
-                        if (node.fingerprint.isNotEmpty() || node.realityPublicKey.isNotEmpty() || node.flow.isNotEmpty()) {
-                            put("utls", JSONObject().apply {
-                                put("enabled", true)
-                                put("fingerprint", if (node.fingerprint.isNotEmpty()) node.fingerprint else "chrome")
-                            })
-                        }
+                        if (effectiveSni.isNotEmpty()) put("server_name", effectiveSni)
+                        put("insecure", node.allowInsecure)
 
                         if (node.realityPublicKey.isNotEmpty()) {
                             put("reality", JSONObject().apply {
@@ -361,6 +349,21 @@ object SingBoxConfigGenerator {
                                 put("public_key", node.realityPublicKey)
                                 if (node.realityShortId.isNotEmpty()) put("short_id", node.realityShortId)
                             })
+                            put("utls", JSONObject().apply {
+                                put("enabled", true)
+                                put("fingerprint", if (node.fingerprint.isNotEmpty()) node.fingerprint else "chrome")
+                            })
+                        } else {
+                            if (node.fingerprint.isNotEmpty()) {
+                                put("utls", JSONObject().apply {
+                                    put("enabled", true)
+                                    put("fingerprint", node.fingerprint)
+                                })
+                            }
+                            if (node.alpn.isNotEmpty()) {
+                                val alpnList = node.alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                                put("alpn", JSONArray(alpnList))
+                            }
                         }
                     }
                     ob.put("tls", tlsObj)
@@ -373,18 +376,25 @@ object SingBoxConfigGenerator {
                 ob.put("uuid", node.uuidOrPassword)
                 ob.put("alter_id", node.alterId)
                 ob.put("security", if (node.cipher.isNotEmpty()) node.cipher else "auto")
-                ob.put("packet_encoding", "xudp")
+                if (node.network.isBlank() || node.network.lowercase() == "tcp") {
+                    ob.put("network", "tcp")
+                    ob.put("tcp_fast_open", false)
+                }
 
                 if (node.tls) {
                     val tlsObj = JSONObject().apply {
                         put("enabled", true)
-                        put("server_name", effectiveSni)
-                        if (node.allowInsecure) put("insecure", true)
+                        if (effectiveSni.isNotEmpty()) put("server_name", effectiveSni)
+                        put("insecure", node.allowInsecure)
                         if (node.fingerprint.isNotEmpty()) {
                             put("utls", JSONObject().apply {
                                 put("enabled", true)
                                 put("fingerprint", node.fingerprint)
                             })
+                        }
+                        if (node.alpn.isNotEmpty()) {
+                            val alpnList = node.alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            put("alpn", JSONArray(alpnList))
                         }
                     }
                     ob.put("tls", tlsObj)
@@ -402,11 +412,17 @@ object SingBoxConfigGenerator {
                 ob.put("password", node.uuidOrPassword)
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", effectiveSni)
-                    if (node.allowInsecure) put("insecure", true)
+                    if (effectiveSni.isNotEmpty()) put("server_name", effectiveSni)
+                    put("insecure", node.allowInsecure)
                     if (node.alpn.isNotEmpty()) {
                         val alpnList = node.alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                         put("alpn", JSONArray(alpnList))
+                    }
+                    if (node.fingerprint.isNotEmpty()) {
+                        put("utls", JSONObject().apply {
+                            put("enabled", true)
+                            put("fingerprint", node.fingerprint)
+                        })
                     }
                 }
                 ob.put("tls", tlsObj)
@@ -417,8 +433,12 @@ object SingBoxConfigGenerator {
                 ob.put("password", node.uuidOrPassword)
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", effectiveSni)
-                    if (node.allowInsecure) put("insecure", true)
+                    if (effectiveSni.isNotEmpty()) put("server_name", effectiveSni)
+                    put("insecure", node.allowInsecure || isIpAddress(cleanServer))
+                    if (node.alpn.isNotEmpty()) {
+                        val alpnList = node.alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        put("alpn", JSONArray(alpnList))
+                    }
                 }
                 ob.put("tls", tlsObj)
 
@@ -436,22 +456,33 @@ object SingBoxConfigGenerator {
                 ob.put("congestion_control", "bbr")
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", effectiveSni)
-                    if (node.allowInsecure) put("insecure", true)
-                    put("alpn", JSONArray().apply { put("h3") })
+                    if (effectiveSni.isNotEmpty()) put("server_name", effectiveSni)
+                    put("insecure", node.allowInsecure || isIpAddress(cleanServer))
+                    if (node.alpn.isNotEmpty()) {
+                        val alpnList = node.alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        put("alpn", JSONArray(alpnList))
+                    } else {
+                        put("alpn", JSONArray().apply { put("h3") })
+                    }
                 }
                 ob.put("tls", tlsObj)
             }
             "anytls" -> {
-                // In standard Sing-Box, AnyTLS is supported as trojan or direct TLS outbound
-                ob.put("type", "trojan")
+                ob.put("type", "anytls")
                 ob.put("password", node.uuidOrPassword)
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
-                    put("server_name", effectiveSni)
-                    if (node.allowInsecure) put("insecure", true)
+                    if (effectiveSni.isNotEmpty()) put("server_name", effectiveSni) else put("server_name", cleanServer)
+                    put("insecure", node.allowInsecure || isIpAddress(cleanServer))
+                    if (node.fingerprint.isNotEmpty()) {
+                        put("utls", JSONObject().apply {
+                            put("enabled", true)
+                            put("fingerprint", node.fingerprint)
+                        })
+                    }
                 }
                 ob.put("tls", tlsObj)
+                buildTransport(node)?.let { ob.put("transport", it) }
             }
             "socks", "socks5" -> {
                 ob.put("type", "socks")
@@ -465,8 +496,8 @@ object SingBoxConfigGenerator {
                 if (node.tls) {
                     val tlsObj = JSONObject().apply {
                         put("enabled", true)
-                        put("server_name", effectiveSni)
-                        if (node.allowInsecure) put("insecure", true)
+                        if (effectiveSni.isNotEmpty()) put("server_name", effectiveSni)
+                        put("insecure", node.allowInsecure)
                     }
                     ob.put("tls", tlsObj)
                 }
@@ -552,7 +583,7 @@ object ClashConfigGenerator {
     }
 
     fun generateYaml(nodes: List<ProxyNode>, isMihomo: Boolean = true): String {
-        val enabled = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
+        val enabled = if (nodes.isEmpty()) listOf(fallbackDummyNode) else nodes
         val sb = StringBuilder()
         sb.appendLine("port: 7890")
         sb.appendLine("socks-port: 7891")
@@ -560,45 +591,55 @@ object ClashConfigGenerator {
         sb.appendLine("allow-lan: true")
         sb.appendLine("mode: rule")
         sb.appendLine("log-level: info")
-        sb.appendLine("ipv6: false")
+        sb.appendLine("ipv6: true")
         sb.appendLine("external-controller: 127.0.0.1:9090")
         sb.appendLine("dns:")
         sb.appendLine("  enable: true")
-        sb.appendLine("  ipv6: false")
+        sb.appendLine("  ipv6: true")
         sb.appendLine("  enhanced-mode: fake-ip")
         sb.appendLine("  fake-ip-range: 198.18.0.1/16")
         sb.appendLine("  listen: 0.0.0.0:1053")
         sb.appendLine("  nameserver:")
         sb.appendLine("    - 223.5.5.5")
         sb.appendLine("    - 119.29.29.29")
+        sb.appendLine("    - \"2400:3200::1\"")
+        sb.appendLine("    - \"2400:3200:baba::1\"")
         sb.appendLine("  fallback:")
         sb.appendLine("    - https://dns.cloudflare.com/dns-query")
         sb.appendLine("    - https://dns.google/dns-query")
+        sb.appendLine("    - \"2606:4700:4700::1111\"")
+        sb.appendLine("    - \"2001:4860:4860::8888\"")
         sb.appendLine("proxies:")
 
         enabled.forEach { node ->
             val nodeType = mapClashType(node.protocol)
-            val effectiveSni = if (node.sni.isNotEmpty()) node.sni else node.server
+            val cleanServer = node.server.removePrefix("[").removeSuffix("]").trim()
+            val rawSni = node.sni.removePrefix("[").removeSuffix("]").trim()
+            val effectiveSni = if (rawSni.isNotBlank() && !isIpAddress(rawSni)) rawSni else if (!isIpAddress(cleanServer)) cleanServer else ""
+            val isServerIp = isIpAddress(cleanServer)
+
             sb.appendLine("  - name: \"${escapeYaml(node.name)}\"")
             sb.appendLine("    type: $nodeType")
-            sb.appendLine("    server: \"${escapeYaml(node.server)}\"")
+            sb.appendLine("    server: \"${escapeYaml(cleanServer)}\"")
             sb.appendLine("    port: ${node.port}")
 
             when (node.protocol.lowercase()) {
                 "anytls" -> {
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    udp: true")
-                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
+                    if (effectiveSni.isNotEmpty()) sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
                     sb.appendLine("    skip-cert-verify: true")
                 }
                 "vless" -> {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    udp: true")
-                    if (node.flow.isNotEmpty()) sb.appendLine("    flow: \"${escapeYaml(node.flow)}\"")
+                    if (node.flow.isNotEmpty() && (node.network.isBlank() || node.network.lowercase() == "tcp") && (node.tls || node.realityPublicKey.isNotBlank())) {
+                        sb.appendLine("    flow: \"${escapeYaml(node.flow)}\"")
+                    }
                     if (node.tls || node.realityPublicKey.isNotEmpty()) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
-                        if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                        if (effectiveSni.isNotEmpty()) sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
+                        if (node.allowInsecure || (isServerIp && node.realityPublicKey.isEmpty())) sb.appendLine("    skip-cert-verify: true")
                         val fp = if (node.fingerprint.isNotEmpty()) node.fingerprint else if (node.realityPublicKey.isNotEmpty()) "chrome" else ""
                         if (fp.isNotEmpty()) sb.appendLine("    client-fingerprint: \"${escapeYaml(fp)}\"")
                         if (node.realityPublicKey.isNotEmpty()) {
@@ -616,8 +657,8 @@ object ClashConfigGenerator {
                     sb.appendLine("    udp: true")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
-                        if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                        if (effectiveSni.isNotEmpty()) sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
+                        if (node.allowInsecure || isServerIp) sb.appendLine("    skip-cert-verify: true")
                         if (node.fingerprint.isNotEmpty()) sb.appendLine("    client-fingerprint: \"${escapeYaml(node.fingerprint)}\"")
                     }
                     appendClashTransport(sb, node)
@@ -630,16 +671,17 @@ object ClashConfigGenerator {
                 "trojan" -> {
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    udp: true")
-                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
-                    if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                    if (effectiveSni.isNotEmpty()) sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
+                    if (node.allowInsecure || isServerIp) sb.appendLine("    skip-cert-verify: true")
                     if (node.alpn.isNotEmpty()) sb.appendLine("    alpn: [\"${node.alpn.replace(",", "\", \"")}\"]")
+                    if (node.fingerprint.isNotEmpty()) sb.appendLine("    client-fingerprint: \"${escapeYaml(node.fingerprint)}\"")
                     appendClashTransport(sb, node)
                 }
                 "hysteria2", "hy2" -> {
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    udp: true")
-                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
-                    if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                    if (effectiveSni.isNotEmpty()) sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
+                    if (node.allowInsecure || isServerIp) sb.appendLine("    skip-cert-verify: true")
                     if (node.obfs.isNotEmpty()) {
                         sb.appendLine("    obfs: \"${escapeYaml(node.obfs)}\"")
                         if (node.obfsPassword.isNotEmpty()) sb.appendLine("    obfs-password: \"${escapeYaml(node.obfsPassword)}\"")
@@ -649,10 +691,10 @@ object ClashConfigGenerator {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    udp: true")
-                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
+                    if (effectiveSni.isNotEmpty()) sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
                     sb.appendLine("    congestion-control: bbr")
                     sb.appendLine("    alpn: [h3]")
-                    if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                    if (node.allowInsecure || isServerIp) sb.appendLine("    skip-cert-verify: true")
                 }
                 "socks", "socks5" -> {
                     if (node.host.isNotEmpty()) sb.appendLine("    username: \"${escapeYaml(node.host)}\"")
@@ -664,8 +706,8 @@ object ClashConfigGenerator {
                     if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
-                        if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                        if (effectiveSni.isNotEmpty()) sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
+                        if (node.allowInsecure || isServerIp) sb.appendLine("    skip-cert-verify: true")
                     }
                 }
             }
@@ -794,8 +836,9 @@ object Base64Generator {
     )
 
     fun generateBase64(nodes: List<ProxyNode>): String {
-        val targetList = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
+        val targetList = if (nodes.isEmpty()) listOf(fallbackDummyNode) else nodes
         val uris = targetList.joinToString("\n") { if (it.rawUri.isNotBlank()) it.rawUri else it.toUri() }
         return Base64.encodeToString(uris.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP or Base64.DEFAULT)
     }
 }
+

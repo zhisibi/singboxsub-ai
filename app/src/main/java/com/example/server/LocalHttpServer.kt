@@ -55,7 +55,8 @@ class LocalHttpServer(private val context: Context) {
                 try {
                     ss = ServerSocket()
                     ss.reuseAddress = true
-                    ss.bind(InetSocketAddress("0.0.0.0", port))
+                    // Bind to wildcard address to support both IPv4 (0.0.0.0) and IPv6 (::)
+                    ss.bind(InetSocketAddress(port))
                     bound = true
                 } catch (e: Exception) {
                     attempts++
@@ -145,7 +146,12 @@ class LocalHttpServer(private val context: Context) {
                 val reqToken = queryParams["token"]?.trim() ?: ""
                 val currentSecret = _secretToken.value.trim()
 
-                val isLocalRequest = clientIp == "127.0.0.1" || clientIp == "localhost" || clientIp == "::1" || clientIp == "0:0:0:0:0:0:0:1"
+                val isLocalRequest = clientIp == "127.0.0.1" || 
+                        clientIp == "localhost" || 
+                        clientIp == "::1" || 
+                        clientIp == "0:0:0:0:0:0:0:1" || 
+                        clientIp == "::ffff:127.0.0.1" || 
+                        clientIp.startsWith("fe80:")
                 val isAuthorized = when {
                     isLocalRequest -> true
                     currentSecret.isEmpty() -> true

@@ -55,11 +55,11 @@ object SubscriptionParser {
         val clean = rawHostPort.trim().substringBefore("?").substringBefore("/")
         if (clean.isEmpty()) return Pair("", defaultPort)
 
-        // Handle IPv6 bracket format: [2602:294:0:b7::1]:8884
+        // Handle IPv6 bracket format: [2602:294:0:b7::1]:8884 or [2602:294:0:b7::1]
         if (clean.startsWith("[")) {
             val closeBracketIdx = clean.indexOf("]")
             if (closeBracketIdx > 0) {
-                val host = clean.substring(0, closeBracketIdx + 1)
+                val host = clean.substring(1, closeBracketIdx) // remove brackets for standard server field
                 val after = clean.substring(closeBracketIdx + 1)
                 val port = if (after.startsWith(":")) {
                     after.removePrefix(":").toIntOrNull() ?: defaultPort
@@ -68,6 +68,11 @@ object SubscriptionParser {
                 }
                 return Pair(host, port)
             }
+        }
+
+        // If it contains multiple colons and no brackets, it's a raw IPv6 address without explicit port
+        if (clean.count { it == ':' } > 1) {
+            return Pair(clean, defaultPort)
         }
 
         // Handle normal host:port (IPv4 or domain)
