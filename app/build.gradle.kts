@@ -23,6 +23,7 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    multiDexEnabled = true
   }
 
   signingConfigs {
@@ -127,6 +128,11 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+  implementation("androidx.multidex:multidex:2.0.1")
+  ksp(libs.androidx.room.compiler)
+  ksp(libs.moshi.kotlin.codegen)
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
