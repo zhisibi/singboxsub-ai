@@ -495,42 +495,48 @@ object ClashConfigGenerator {
         val sb = StringBuilder()
         sb.appendLine("port: 7890")
         sb.appendLine("socks-port: 7891")
+        sb.appendLine("mixed-port: 2080")
         sb.appendLine("allow-lan: true")
         sb.appendLine("mode: rule")
         sb.appendLine("log-level: info")
         sb.appendLine("ipv6: false")
-        sb.appendLine("external-controller: 0.0.0.0:9090")
-        sb.appendLine()
+        sb.appendLine("external-controller: 127.0.0.1:9090")
         sb.appendLine("dns:")
         sb.appendLine("  enable: true")
-        sb.appendLine("  listen: 0.0.0.0:1053")
         sb.appendLine("  ipv6: false")
         sb.appendLine("  enhanced-mode: fake-ip")
         sb.appendLine("  fake-ip-range: 198.18.0.1/16")
+        sb.appendLine("  listen: 0.0.0.0:1053")
         sb.appendLine("  nameserver:")
         sb.appendLine("    - 223.5.5.5")
         sb.appendLine("    - 119.29.29.29")
         sb.appendLine("  fallback:")
-        sb.appendLine("    - https://1.1.1.1/dns-query")
-        sb.appendLine("    - https://8.8.8.8/dns-query")
-        sb.appendLine()
+        sb.appendLine("    - https://dns.cloudflare.com/dns-query")
+        sb.appendLine("    - https://dns.google/dns-query")
         sb.appendLine("proxies:")
 
         enabled.forEach { node ->
             val nodeType = mapClashType(node.protocol)
+            val effectiveSni = if (node.sni.isNotEmpty()) node.sni else node.server
             sb.appendLine("  - name: \"${escapeYaml(node.name)}\"")
             sb.appendLine("    type: $nodeType")
             sb.appendLine("    server: \"${escapeYaml(node.server)}\"")
             sb.appendLine("    port: ${node.port}")
-            sb.appendLine("    udp: true")
 
             when (node.protocol.lowercase()) {
+                "anytls" -> {
+                    sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    udp: true")
+                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
+                    sb.appendLine("    skip-cert-verify: true")
+                }
                 "vless" -> {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    udp: true")
                     if (node.flow.isNotEmpty()) sb.appendLine("    flow: \"${escapeYaml(node.flow)}\"")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
+                        sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                     }
                     if (node.network.isNotEmpty() && node.network != "tcp") {
@@ -549,9 +555,10 @@ object ClashConfigGenerator {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    alterId: ${node.alterId}")
                     sb.appendLine("    cipher: \"${escapeYaml(if (node.cipher.isNotEmpty()) node.cipher else "auto")}\"")
+                    sb.appendLine("    udp: true")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
+                        sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                     }
                     if (node.network.isNotEmpty() && node.network != "tcp") {
@@ -569,47 +576,46 @@ object ClashConfigGenerator {
                 "ss", "shadowsocks" -> {
                     sb.appendLine("    cipher: \"${escapeYaml(if (node.cipher.isNotEmpty()) node.cipher else "aes-256-gcm")}\"")
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    udp: true")
                 }
                 "trojan" -> {
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
-                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
+                    sb.appendLine("    udp: true")
+                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "hysteria2", "hy2" -> {
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
-                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
+                    sb.appendLine("    udp: true")
+                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "tuic" -> {
                     sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
-                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
+                    sb.appendLine("    udp: true")
+                    sb.appendLine("    sni: \"${escapeYaml(effectiveSni)}\"")
                     sb.appendLine("    congestion-control: bbr")
                     sb.appendLine("    alpn: [h3]")
-                    if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
-                }
-                "anytls" -> {
-                    sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
-                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "socks", "socks5" -> {
                     if (node.host.isNotEmpty()) sb.appendLine("    username: \"${escapeYaml(node.host)}\"")
                     if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    udp: true")
                 }
                 else -> { // http
                     if (node.host.isNotEmpty()) sb.appendLine("    username: \"${escapeYaml(node.host)}\"")
                     if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
+                        sb.appendLine("    servername: \"${escapeYaml(effectiveSni)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                     }
                 }
             }
         }
 
-        sb.appendLine()
         sb.appendLine("proxy-groups:")
         // 1. 🚀 节点选择
         sb.appendLine("  - name: 🚀 节点选择")
@@ -624,7 +630,6 @@ object ClashConfigGenerator {
         sb.appendLine("    type: url-test")
         sb.appendLine("    url: http://www.gstatic.com/generate_204")
         sb.appendLine("    interval: 300")
-        sb.appendLine("    tolerance: 50")
         sb.appendLine("    proxies:")
         if (enabled.isNotEmpty()) {
             enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
@@ -632,45 +637,39 @@ object ClashConfigGenerator {
             sb.appendLine("      - DIRECT")
         }
 
-        // 3. 🏠 私有网络
-        sb.appendLine("  - name: 🏠 私有网络")
-        sb.appendLine("    type: select")
-        sb.appendLine("    proxies:")
-        sb.appendLine("      - DIRECT")
-        sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
-
-        // 4. 🔒 国内服务
+        // 3. 🔒 国内服务
         sb.appendLine("  - name: 🔒 国内服务")
         sb.appendLine("    type: select")
         sb.appendLine("    proxies:")
         sb.appendLine("      - DIRECT")
         sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
 
-        // 5. 🌐 非中国
+        // 4. 🌐 非中国
         sb.appendLine("  - name: 🌐 非中国")
         sb.appendLine("    type: select")
         sb.appendLine("    proxies:")
         sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
         sb.appendLine("      - DIRECT")
+
+        // 5. 🏠 私有网络
+        sb.appendLine("  - name: 🏠 私有网络")
+        sb.appendLine("    type: select")
+        sb.appendLine("    proxies:")
+        sb.appendLine("      - DIRECT")
+        sb.appendLine("      - 🚀 节点选择")
 
         // 6. 🐟 漏网之鱼
         sb.appendLine("  - name: 🐟 漏网之鱼")
         sb.appendLine("    type: select")
         sb.appendLine("    proxies:")
         sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
         sb.appendLine("      - DIRECT")
 
-        sb.appendLine()
         sb.appendLine("rules:")
-        sb.appendLine("  - GEOIP,private,DIRECT,no-resolve")
-        sb.appendLine("  - GEOSITE,private,DIRECT")
-        sb.appendLine("  - GEOSITE,category-ads-all,REJECT")
-        sb.appendLine("  - GEOSITE,cn,DIRECT")
-        sb.appendLine("  - GEOIP,cn,DIRECT")
+        sb.appendLine("  - GEOIP,private,🏠 私有网络,no-resolve")
+        sb.appendLine("  - GEOSITE,cn,🔒 国内服务")
+        sb.appendLine("  - GEOIP,CN,🔒 国内服务")
+        sb.appendLine("  - GEOSITE,geolocation-!cn,🌐 非中国")
         sb.appendLine("  - MATCH,🐟 漏网之鱼")
 
         return sb.toString()

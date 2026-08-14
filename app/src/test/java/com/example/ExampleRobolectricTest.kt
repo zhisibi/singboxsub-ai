@@ -37,4 +37,28 @@ class ExampleRobolectricTest {
         assertTrue(yaml.contains("\\\\"))
         assertTrue(yaml.contains("\\\""))
     }
+
+    @Test
+    fun `test anytls yaml output matches specification`() {
+        val node = ProxyNode(
+            id = 2,
+            name = "anytls-chi2",
+            protocol = "anytls",
+            server = "163.192.119.133",
+            port = 31939,
+            uuidOrPassword = "0574c0ec-d2dc-4b1d-9101-648025cd9c18",
+            sni = "www.bing.com"
+        )
+        val yaml = ClashConfigGenerator.generateYaml(listOf(node), isMihomo = true)
+        assertTrue(yaml.contains("mixed-port: 2080"))
+        assertTrue(yaml.contains("external-controller: 127.0.0.1:9090"))
+        assertTrue(yaml.contains("fallback:\n    - https://dns.cloudflare.com/dns-query\n    - https://dns.google/dns-query"))
+        assertTrue(yaml.contains("type: anytls"))
+        assertTrue(yaml.contains("skip-cert-verify: true"))
+        assertTrue(yaml.contains("GEOIP,private,🏠 私有网络,no-resolve"))
+        assertTrue(yaml.contains("GEOSITE,cn,🔒 国内服务"))
+        assertTrue(yaml.contains("GEOIP,CN,🔒 国内服务"))
+        assertTrue(yaml.contains("GEOSITE,geolocation-!cn,🌐 非中国"))
+        assertTrue(yaml.contains("MATCH,🐟 漏网之鱼"))
+    }
 }
