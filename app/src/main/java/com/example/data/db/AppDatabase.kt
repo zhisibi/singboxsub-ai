@@ -89,6 +89,9 @@ interface SavedCustomSubDao {
     @Query("SELECT * FROM saved_custom_subscriptions ORDER BY createdAt DESC")
     suspend fun getAllSavedCustomSubsList(): List<SavedCustomSubscription>
 
+    @Query("SELECT * FROM saved_custom_subscriptions WHERE id = :id")
+    suspend fun getSavedCustomSubById(id: Long): SavedCustomSubscription?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSavedCustomSub(sub: SavedCustomSubscription): Long
 

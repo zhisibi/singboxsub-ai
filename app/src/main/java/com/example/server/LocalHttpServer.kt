@@ -174,8 +174,29 @@ class LocalHttpServer(private val context: Context) {
                         sendRawResponse(outputStream, 200, "OK", "text/html; charset=UTF-8", html)
                         logAccess(clientIp, path, "web_dashboard", userAgent, 200)
                     }
-                    path == "/sub" || path == "/singbox" || path == "/mihomo" || path == "/config" || path == "/clash" || path == "/base64" -> {
+                    path == "/sub" || path == "/singbox" || path == "/singbox113" || path == "/singbox114" || path == "/mihomo" || path == "/config" || path == "/clash" || path == "/base64" -> {
+                        val sidParam = queryParams["sid"] ?: queryParams["sub_id"] ?: queryParams["custom_id"] ?: queryParams["id"]
+                        val sid = sidParam?.toLongOrNull()
+                        val savedCustomSub = if (sid != null) {
+                            try {
+                                db.savedCustomSubDao().getSavedCustomSubById(sid)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else null
+
+                        // If a specific sid was requested but not found in DB
+                        if (sid != null && savedCustomSub == null) {
+                            sendRawResponse(outputStream, 404, "Not Found", "text/plain; charset=UTF-8", "Custom Subscription (ID: $sid) not found or has been removed.")
+                            logAccess(clientIp, path, "custom_sub_404", userAgent, 404)
+                            socket.close()
+                            return@launch
+                        }
+
                         val requestedType = queryParams["type"]?.lowercase() ?: when {
+                            savedCustomSub != null -> savedCustomSub.format
+                            path == "/singbox113" -> "singbox113"
+                            path == "/singbox114" -> "singbox"
                             path == "/mihomo" || path == "/clash" -> "mihomo"
                             path == "/base64" -> "base64"
                             userAgent.contains("Clash", ignoreCase = true) || userAgent.contains("Mihomo", ignoreCase = true) -> "mihomo"
@@ -183,39 +204,65 @@ class LocalHttpServer(private val context: Context) {
                             else -> "singbox"
                         }
 
-                        // Filter nodes by query 'nodes' parameter if present
-                        val nodesParam = queryParams["nodes"]
                         val allDbNodes = db.proxyNodeDao().getAllNodes()
                         val enabledNodes = db.proxyNodeDao().getEnabledNodes().ifEmpty { allDbNodes }
 
-                        val targetNodes: List<ProxyNode> = if (!nodesParam.isNullOrBlank()) {
-                            val ids = nodesParam.split(",").mapNotNull { it.trim().toLongOrNull() }
-                            if (ids.isNotEmpty()) {
-                                val found = db.proxyNodeDao().getNodesByIds(ids)
-                                if (found.isNotEmpty()) found else enabledNodes
-                            } else {
-                                enabledNodes
+                        // Filter nodes: if saved custom sub is present, read its latest nodeIds dynamically from DB
+                        val targetNodes: List<ProxyNode> = when {
+                            savedCustomSub != null -> {
+                                if (savedCustomSub.nodeIds.isNotBlank()) {
+                                    val ids = savedCustomSub.nodeIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+                                    if (ids.isNotEmpty()) {
+                                        val found = db.proxyNodeDao().getNodesByIds(ids)
+                                        if (found.isNotEmpty()) found else enabledNodes
+                                    } else {
+                                        enabledNodes
+                                    }
+                                } else {
+                                    enabledNodes
+                                }
                             }
-                        } else {
-                            enabledNodes
+                            !queryParams["nodes"].isNullOrBlank() -> {
+                                val ids = queryParams["nodes"]!!.split(",").mapNotNull { it.trim().toLongOrNull() }
+                                if (ids.isNotEmpty()) {
+                                    val found = db.proxyNodeDao().getNodesByIds(ids)
+                                    if (found.isNotEmpty()) found else enabledNodes
+                                } else {
+                                    enabledNodes
+                                }
+                            }
+                            else -> enabledNodes
                         }
 
                         when (requestedType) {
                             "mihomo", "clash", "clashmeta" -> {
                                 val yaml = ClashConfigGenerator.generateYaml(targetNodes, isMihomo = true)
-                                sendRawResponse(outputStream, 200, "OK", "text/yaml; charset=UTF-8", yaml, filename = "subscription.yaml")
-                                logAccess(clientIp, path, "mihomo", userAgent, 200)
+                                val subFilename = if (savedCustomSub != null) "${savedCustomSub.name.filter { it.isLetterOrDigit() }.ifBlank { "mihomo" }}.yaml" else "subscription.yaml"
+                                sendRawResponse(outputStream, 200, "OK", "text/yaml; charset=UTF-8", yaml, filename = subFilename)
+                                logAccess(clientIp, path, if (savedCustomSub != null) "custom_mihomo_${savedCustomSub.id}" else "mihomo", userAgent, 200)
                             }
                             "base64" -> {
                                 val b64 = Base64Generator.generateBase64(targetNodes)
-                                sendRawResponse(outputStream, 200, "OK", "text/plain; charset=UTF-8", b64, filename = "subscription.txt")
-                                logAccess(clientIp, path, "base64", userAgent, 200)
+                                val subFilename = if (savedCustomSub != null) "${savedCustomSub.name.filter { it.isLetterOrDigit() }.ifBlank { "sub" }}.txt" else "subscription.txt"
+                                sendRawResponse(outputStream, 200, "OK", "text/plain; charset=UTF-8", b64, filename = subFilename)
+                                logAccess(clientIp, path, if (savedCustomSub != null) "custom_base64_${savedCustomSub.id}" else "base64", userAgent, 200)
                             }
-                            else -> { // singbox
+                            else -> { // singbox (1.14+ or 1.13)
                                 val subMode = queryParams["mode"] ?: "Rule"
-                                val json = SingBoxConfigGenerator.generateJson(targetNodes, routingMode = subMode, inboundPort = 2080)
-                                sendRawResponse(outputStream, 200, "OK", "application/json; charset=UTF-8", json, filename = "singbox.json")
-                                logAccess(clientIp, path, "singbox", userAgent, 200)
+                                val isV113 = requestedType == "singbox113" ||
+                                        requestedType == "singbox_1.13" ||
+                                        queryParams["ver"] == "1.13" ||
+                                        path == "/singbox113"
+                                val singboxVersion = if (isV113) "1.13" else (queryParams["ver"] ?: "1.14")
+                                val json = SingBoxConfigGenerator.generateJson(
+                                    nodes = targetNodes,
+                                    routingMode = subMode,
+                                    inboundPort = 2080,
+                                    version = singboxVersion
+                                )
+                                val filename = if (isV113) "singbox_1.13.json" else "singbox.json"
+                                sendRawResponse(outputStream, 200, "OK", "application/json; charset=UTF-8", json, filename = filename)
+                                logAccess(clientIp, path, if (savedCustomSub != null) "custom_singbox_${savedCustomSub.id}" else if (isV113) "singbox_1.13" else "singbox", userAgent, 200)
                             }
                         }
                     }
@@ -325,9 +372,15 @@ class LocalHttpServer(private val context: Context) {
                 </div>
                 
                 <div class="card">
-                    <h3>🚀 Sing-Box 1.14+ JSON 订阅</h3>
+                    <h3>🚀 Sing-Box 1.14+ (最新版) JSON 订阅</h3>
                     <div class="url-box">http://$lanIp:$port/sub?type=singbox$tokenParam</div>
-                    <a class="btn" href="/sub?type=singbox$tokenParam">获取 Sing-Box 配置</a>
+                    <a class="btn" href="/sub?type=singbox$tokenParam">获取 Sing-Box 1.14+ 配置</a>
+                </div>
+
+                <div class="card">
+                    <h3>📦 Sing-Box 1.13 及旧版 (兼容配置) JSON 订阅</h3>
+                    <div class="url-box">http://$lanIp:$port/sub?type=singbox&ver=1.13$tokenParam</div>
+                    <a class="btn" href="/sub?type=singbox&ver=1.13$tokenParam">获取 Sing-Box 1.13 配置</a>
                 </div>
 
                 <div class="card">

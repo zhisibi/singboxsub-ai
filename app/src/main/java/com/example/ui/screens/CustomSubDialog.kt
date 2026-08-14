@@ -114,7 +114,17 @@ fun CustomSubDialog(
     val tokenParam = if (tokenInput.isNotBlank()) "&token=$tokenInput" else ""
     val nodeParam = if (selectedIds.isNotEmpty()) "&nodes=${selectedIds.joinToString(",")}" else ""
 
-    val generatedSubUrl = "http://$effectiveHost:$port/sub?type=$selectedFormat$tokenParam$nodeParam"
+    val generatedSubUrl = if (subToEdit != null) {
+        "http://$effectiveHost:$port/sub?sid=${subToEdit.id}$tokenParam"
+    } else {
+        when (selectedFormat) {
+            "singbox113" -> "http://$effectiveHost:$port/sub?type=singbox&ver=1.13$tokenParam$nodeParam"
+            "singbox" -> "http://$effectiveHost:$port/sub?type=singbox$tokenParam$nodeParam"
+            "mihomo" -> "http://$effectiveHost:$port/sub?type=mihomo$tokenParam$nodeParam"
+            "base64" -> "http://$effectiveHost:$port/sub?type=base64$tokenParam$nodeParam"
+            else -> "http://$effectiveHost:$port/sub?type=$selectedFormat$tokenParam$nodeParam"
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -148,7 +158,11 @@ fun CustomSubDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isZh) "自定义生成订阅链接" else "Custom Sub Generator",
+                            text = if (subToEdit != null) {
+                                if (isZh) "编辑自定义订阅" else "Edit Custom Subscription"
+                            } else {
+                                if (isZh) "自定义生成订阅" else "Custom Sub Generator"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -216,7 +230,13 @@ fun CustomSubDialog(
                     FilterChip(
                         selected = selectedFormat == "singbox",
                         onClick = { selectedFormat = "singbox" },
-                        label = { Text("Sing-Box", style = MaterialTheme.typography.labelSmall) },
+                        label = { Text("Sing-Box 1.14+", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                    FilterChip(
+                        selected = selectedFormat == "singbox113",
+                        onClick = { selectedFormat = "singbox113" },
+                        label = { Text("Sing-Box 1.13", style = MaterialTheme.typography.labelSmall) },
                         modifier = Modifier.height(28.dp)
                     )
                     FilterChip(
@@ -449,12 +469,37 @@ fun CustomSubDialog(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = if (isZh) "生成的专属订阅链接:" else "Generated Custom Subscription URL:",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (subToEdit != null) {
+                                    if (isZh) "固定专属订阅链接 (永久唯一):" else "Permanent Custom Sub URL:"
+                                } else {
+                                    if (isZh) "专属订阅链接预览:" else "Custom Subscription URL Preview:"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+
+                            if (subToEdit != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isZh) "永久固定" else "PERMANENT",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(4.dp))
 
@@ -469,6 +514,15 @@ fun CustomSubDialog(
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.padding(8.dp),
                                 maxLines = 2
+                            )
+                        }
+
+                        if (subToEdit != null) {
+                            Text(
+                                text = if (isZh) "✨ 修改选中的节点后此链接保持不变，客户端只需点击‘更新订阅’即可自动同步最新节点！" else "✨ Node changes apply dynamically; client subscription URL stays unchanged.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
 
@@ -489,7 +543,7 @@ fun CustomSubDialog(
                                         nodeIds = selectedIds.toList(),
                                         id = subToEdit?.id ?: 0
                                     )
-                                    Toast.makeText(context, if (isZh) "已成功保存此自定义订阅！" else "Custom subscription saved!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, if (isZh) "已成功保存！专属链接永久有效。" else "Saved! Permanent URL active.", Toast.LENGTH_SHORT).show()
                                     onDismiss()
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -500,7 +554,15 @@ fun CustomSubDialog(
                             ) {
                                 Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text(if (isZh) "保存此订阅" else "Save Subscription", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                Text(
+                                    if (subToEdit != null) {
+                                        if (isZh) "保存修改 (链接不变)" else "Save (URL Unchanged)"
+                                    } else {
+                                        if (isZh) "保存并生成固定链接" else "Save & Get Link"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1
+                                )
                             }
 
                             OutlinedButton(
@@ -529,9 +591,10 @@ fun CustomSubDialog(
     }
 
     if (showQrModal) {
-        val qrUrl = if (selectedFormat == "singbox") {
+        val qrUrl = if (selectedFormat == "singbox" || selectedFormat == "singbox113") {
             val encodedUrl = URLEncoder.encode(generatedSubUrl, "UTF-8")
-            val encodedName = URLEncoder.encode(customNameInput.ifBlank { "Sing-Box" }, "UTF-8")
+            val defaultName = if (selectedFormat == "singbox113") "Sing-Box 1.13" else "Sing-Box"
+            val encodedName = URLEncoder.encode(customNameInput.ifBlank { defaultName }, "UTF-8")
             "sing-box://import-remote-profile?url=$encodedUrl#$encodedName"
         } else {
             generatedSubUrl

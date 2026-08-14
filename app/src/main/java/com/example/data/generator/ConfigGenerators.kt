@@ -22,47 +22,82 @@ object SingBoxConfigGenerator {
     fun generateJson(
         nodes: List<ProxyNode>,
         routingMode: String = "Rule", // Rule, Global, Direct
-        inboundPort: Int = 2080
+        inboundPort: Int = 2080,
+        version: String = "1.14" // "1.14" (latest) or "1.13" (<=1.13 legacy)
     ): String {
+        val isLegacy113 = version.trim() == "1.13" || version.trim().startsWith("1.13") || version.trim() == "legacy" || version.trim() == "1.13.0"
         val enabledNodes = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
         val root = JSONObject()
 
-        // 1. http_clients
-        val httpClients = JSONArray().apply {
-            put(JSONObject().apply {
-                put("tag", "default-http-client")
-                put("detour", "🚀 节点选择")
-            })
+        // 0. log
+        val log = JSONObject().apply {
+            put("level", "info")
+            put("timestamp", true)
         }
-        root.put("http_clients", httpClients)
+        root.put("log", log)
 
-        // 2. dns configuration matching user template
+        // 1. http_clients (only in 1.14+)
+        if (!isLegacy113) {
+            val httpClients = JSONArray().apply {
+                put(JSONObject().apply {
+                    put("tag", "default-http-client")
+                    put("detour", "🚀 节点选择")
+                })
+            }
+            root.put("http_clients", httpClients)
+        }
+
+        // 2. dns configuration matching version template
         val dns = JSONObject().apply {
             val servers = JSONArray().apply {
-                put(JSONObject().apply {
-                    put("type", "tcp")
-                    put("tag", "dns_proxy")
-                    put("server", "1.1.1.1")
-                    put("detour", "🚀 节点选择")
-                    put("domain_resolver", "dns_resolver")
-                })
-                put(JSONObject().apply {
-                    put("type", "https")
-                    put("tag", "dns_direct")
-                    put("server", "dns.alidns.com")
-                    put("domain_resolver", "dns_resolver")
-                })
-                put(JSONObject().apply {
-                    put("type", "udp")
-                    put("tag", "dns_resolver")
-                    put("server", "223.5.5.5")
-                })
-                put(JSONObject().apply {
-                    put("type", "fakeip")
-                    put("tag", "dns_fakeip")
-                    put("inet4_range", "198.18.0.0/15")
-                    put("inet6_range", "fc00::/18")
-                })
+                if (isLegacy113) {
+                    put(JSONObject().apply {
+                        put("tag", "dns_proxy")
+                        put("address", "1.1.1.1")
+                        put("detour", "🚀 节点选择")
+                        put("address_resolver", "dns_resolver")
+                    })
+                    put(JSONObject().apply {
+                        put("tag", "dns_direct")
+                        put("address", "https://dns.alidns.com/dns-query")
+                        put("detour", "DIRECT")
+                        put("address_resolver", "dns_resolver")
+                    })
+                    put(JSONObject().apply {
+                        put("tag", "dns_resolver")
+                        put("address", "223.5.5.5")
+                        put("detour", "DIRECT")
+                    })
+                    put(JSONObject().apply {
+                        put("tag", "dns_fakeip")
+                        put("address", "fakeip")
+                    })
+                } else {
+                    put(JSONObject().apply {
+                        put("type", "tcp")
+                        put("tag", "dns_proxy")
+                        put("server", "1.1.1.1")
+                        put("detour", "🚀 节点选择")
+                        put("domain_resolver", "dns_resolver")
+                    })
+                    put(JSONObject().apply {
+                        put("type", "https")
+                        put("tag", "dns_direct")
+                        put("server", "dns.alidns.com")
+                        put("domain_resolver", "dns_resolver")
+                    })
+                    put(JSONObject().apply {
+                        put("type", "udp")
+                        put("tag", "dns_resolver")
+                        put("server", "223.5.5.5")
+                    })
+                    put(JSONObject().apply {
+                        put("type", "fakeip")
+                        put("tag", "dns_fakeip")
+                        put("inet4_range", "198.18.0.0/15")
+                        put("inet6_range", "fc00::/18")
+                    })
+                }
             }
             put("servers", servers)
 
@@ -86,6 +121,14 @@ object SingBoxConfigGenerator {
             }
             put("rules", dnsRules)
             put("final", "dns_direct")
+
+            if (isLegacy113) {
+                put("fakeip", JSONObject().apply {
+                    put("enabled", true)
+                    put("inet4_range", "198.18.0.0/15")
+                    put("inet6_range", "fc00::/18")
+                })
+            }
         }
         root.put("dns", dns)
 
@@ -187,44 +230,32 @@ object SingBoxConfigGenerator {
         // 6. Route configuration
         val route = JSONObject().apply {
             put("default_domain_resolver", "dns_resolver")
-            put("default_http_client", "default-http-client")
+            if (!isLegacy113) {
+                put("default_http_client", "default-http-client")
+            }
 
             val ruleSet = JSONArray().apply {
-                put(JSONObject().apply {
-                    put("tag", "geolocation-cn")
-                    put("type", "remote")
-                    put("format", "binary")
-                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/geolocation-cn.srs")
-                    put("http_client", "default-http-client")
-                })
-                put(JSONObject().apply {
-                    put("tag", "cn")
-                    put("type", "remote")
-                    put("format", "binary")
-                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/cn.srs")
-                    put("http_client", "default-http-client")
-                })
-                put(JSONObject().apply {
-                    put("tag", "geolocation-!cn")
-                    put("type", "remote")
-                    put("format", "binary")
-                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/geolocation-!cn.srs")
-                    put("http_client", "default-http-client")
-                })
-                put(JSONObject().apply {
-                    put("tag", "private-ip")
-                    put("type", "remote")
-                    put("format", "binary")
-                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/private.srs")
-                    put("http_client", "default-http-client")
-                })
-                put(JSONObject().apply {
-                    put("tag", "cn-ip")
-                    put("type", "remote")
-                    put("format", "binary")
-                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/cn.srs")
-                    put("http_client", "default-http-client")
-                })
+                val ruleSetItems = listOf(
+                    Triple("geolocation-cn", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/geolocation-cn.srs", "binary"),
+                    Triple("cn", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/cn.srs", "binary"),
+                    Triple("geolocation-!cn", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/geolocation-!cn.srs", "binary"),
+                    Triple("private-ip", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/private.srs", "binary"),
+                    Triple("cn-ip", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/cn.srs", "binary")
+                )
+
+                ruleSetItems.forEach { (tag, url, format) ->
+                    put(JSONObject().apply {
+                        put("tag", tag)
+                        put("type", "remote")
+                        put("format", format)
+                        put("url", url)
+                        if (isLegacy113) {
+                            put("download_detour", "🚀 节点选择")
+                        } else {
+                            put("http_client", "default-http-client")
+                        }
+                    })
+                }
             }
             put("rule_set", ruleSet)
 
@@ -436,6 +467,29 @@ object ClashConfigGenerator {
         rawUri = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQAMTI3LjAuMC4xOjgzODg=#%E7%A4%BA%E4%BE%8B-%E8%AF%B7%E5%AF%BC%E5%85%A5%E8%8A%82%E7%82%B9%E6%BA%90"
     )
 
+    private fun escapeYaml(value: String): String {
+        val sb = StringBuilder()
+        for (ch in value) {
+            when (ch) {
+                '\\' -> sb.append("\\\\")
+                '\"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                '\b' -> sb.append("\\b")
+                '\u000C' -> sb.append("\\f")
+                else -> {
+                    if (ch.code < 0x20) {
+                        sb.append(String.format("\\x%02x", ch.code))
+                    } else {
+                        sb.append(ch)
+                    }
+                }
+            }
+        }
+        return sb.toString()
+    }
+
     fun generateYaml(nodes: List<ProxyNode>, isMihomo: Boolean = true): String {
         val enabled = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
         val sb = StringBuilder()
@@ -464,91 +518,91 @@ object ClashConfigGenerator {
 
         enabled.forEach { node ->
             val nodeType = mapClashType(node.protocol)
-            sb.appendLine("  - name: \"${node.name}\"")
+            sb.appendLine("  - name: \"${escapeYaml(node.name)}\"")
             sb.appendLine("    type: $nodeType")
-            sb.appendLine("    server: ${node.server}")
+            sb.appendLine("    server: \"${escapeYaml(node.server)}\"")
             sb.appendLine("    port: ${node.port}")
             sb.appendLine("    udp: true")
 
             when (node.protocol.lowercase()) {
                 "vless" -> {
-                    sb.appendLine("    uuid: \"${node.uuidOrPassword}\"")
-                    if (node.flow.isNotEmpty()) sb.appendLine("    flow: \"${node.flow}\"")
+                    sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    if (node.flow.isNotEmpty()) sb.appendLine("    flow: \"${escapeYaml(node.flow)}\"")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                        sb.appendLine("    servername: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                     }
                     if (node.network.isNotEmpty() && node.network != "tcp") {
                         sb.appendLine("    network: ${node.network}")
                         if (node.network == "ws") {
                             sb.appendLine("    ws-opts:")
-                            if (node.path.isNotEmpty()) sb.appendLine("      path: \"${node.path}\"")
+                            if (node.path.isNotEmpty()) sb.appendLine("      path: \"${escapeYaml(node.path)}\"")
                             if (node.host.isNotEmpty()) {
                                 sb.appendLine("      headers:")
-                                sb.appendLine("        Host: \"${node.host}\"")
+                                sb.appendLine("        Host: \"${escapeYaml(node.host)}\"")
                             }
                         }
                     }
                 }
                 "vmess" -> {
-                    sb.appendLine("    uuid: \"${node.uuidOrPassword}\"")
+                    sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
                     sb.appendLine("    alterId: ${node.alterId}")
-                    sb.appendLine("    cipher: \"${if (node.cipher.isNotEmpty()) node.cipher else "auto"}\"")
+                    sb.appendLine("    cipher: \"${escapeYaml(if (node.cipher.isNotEmpty()) node.cipher else "auto")}\"")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                        sb.appendLine("    servername: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                     }
                     if (node.network.isNotEmpty() && node.network != "tcp") {
                         sb.appendLine("    network: ${node.network}")
                         if (node.network == "ws") {
                             sb.appendLine("    ws-opts:")
-                            if (node.path.isNotEmpty()) sb.appendLine("      path: \"${node.path}\"")
+                            if (node.path.isNotEmpty()) sb.appendLine("      path: \"${escapeYaml(node.path)}\"")
                             if (node.host.isNotEmpty()) {
                                 sb.appendLine("      headers:")
-                                sb.appendLine("        Host: \"${node.host}\"")
+                                sb.appendLine("        Host: \"${escapeYaml(node.host)}\"")
                             }
                         }
                     }
                 }
                 "ss", "shadowsocks" -> {
-                    sb.appendLine("    cipher: ${if (node.cipher.isNotEmpty()) node.cipher else "aes-256-gcm"}")
-                    sb.appendLine("    password: \"${node.uuidOrPassword}\"")
+                    sb.appendLine("    cipher: \"${escapeYaml(if (node.cipher.isNotEmpty()) node.cipher else "aes-256-gcm")}\"")
+                    sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                 }
                 "trojan" -> {
-                    sb.appendLine("    password: \"${node.uuidOrPassword}\"")
-                    sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "hysteria2", "hy2" -> {
-                    sb.appendLine("    password: \"${node.uuidOrPassword}\"")
-                    sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "tuic" -> {
-                    sb.appendLine("    uuid: \"${node.uuidOrPassword}\"")
-                    sb.appendLine("    password: \"${node.uuidOrPassword}\"")
-                    sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    sb.appendLine("    uuid: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                     sb.appendLine("    congestion-control: bbr")
                     sb.appendLine("    alpn: [h3]")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "anytls" -> {
-                    sb.appendLine("    password: \"${node.uuidOrPassword}\"")
-                    sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
+                    sb.appendLine("    sni: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "socks", "socks5" -> {
-                    if (node.host.isNotEmpty()) sb.appendLine("    username: \"${node.host}\"")
-                    if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${node.uuidOrPassword}\"")
+                    if (node.host.isNotEmpty()) sb.appendLine("    username: \"${escapeYaml(node.host)}\"")
+                    if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                 }
                 else -> { // http
-                    if (node.host.isNotEmpty()) sb.appendLine("    username: \"${node.host}\"")
-                    if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${node.uuidOrPassword}\"")
+                    if (node.host.isNotEmpty()) sb.appendLine("    username: \"${escapeYaml(node.host)}\"")
+                    if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${escapeYaml(node.uuidOrPassword)}\"")
                     if (node.tls) {
                         sb.appendLine("    tls: true")
-                        sb.appendLine("    servername: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                        sb.appendLine("    servername: \"${escapeYaml(if (node.sni.isNotEmpty()) node.sni else node.server)}\"")
                         if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                     }
                 }
@@ -563,7 +617,7 @@ object ClashConfigGenerator {
         sb.appendLine("    proxies:")
         sb.appendLine("      - ⚡ 自动选择")
         sb.appendLine("      - DIRECT")
-        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
 
         // 2. ⚡ 自动选择
         sb.appendLine("  - name: ⚡ 自动选择")
@@ -573,7 +627,7 @@ object ClashConfigGenerator {
         sb.appendLine("    tolerance: 50")
         sb.appendLine("    proxies:")
         if (enabled.isNotEmpty()) {
-            enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+            enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
         } else {
             sb.appendLine("      - DIRECT")
         }
@@ -584,7 +638,7 @@ object ClashConfigGenerator {
         sb.appendLine("    proxies:")
         sb.appendLine("      - DIRECT")
         sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
 
         // 4. 🔒 国内服务
         sb.appendLine("  - name: 🔒 国内服务")
@@ -592,14 +646,14 @@ object ClashConfigGenerator {
         sb.appendLine("    proxies:")
         sb.appendLine("      - DIRECT")
         sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
 
         // 5. 🌐 非中国
         sb.appendLine("  - name: 🌐 非中国")
         sb.appendLine("    type: select")
         sb.appendLine("    proxies:")
         sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
         sb.appendLine("      - DIRECT")
 
         // 6. 🐟 漏网之鱼
@@ -607,7 +661,7 @@ object ClashConfigGenerator {
         sb.appendLine("    type: select")
         sb.appendLine("    proxies:")
         sb.appendLine("      - 🚀 节点选择")
-        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+        enabled.forEach { sb.appendLine("      - \"${escapeYaml(it.name)}\"") }
         sb.appendLine("      - DIRECT")
 
         sb.appendLine()

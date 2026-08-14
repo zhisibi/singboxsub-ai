@@ -235,7 +235,7 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
                     onCopyLocal = { url -> copyToClipboard(url, "${customSub.name} (Local)") },
                     onCopyLan = { url -> copyToClipboard(url, "${customSub.name} (LAN)") },
                     onQrCode = { url ->
-                        if (customSub.format == "singbox") {
+                        if (customSub.format == "singbox" || customSub.format == "singbox113") {
                             val encodedUrl = URLEncoder.encode(url, "UTF-8")
                             val encodedName = URLEncoder.encode(customSub.name, "UTF-8")
                             qrModalUrl = "sing-box://import-remote-profile?url=$encodedUrl#$encodedName"
@@ -267,18 +267,41 @@ fun SubscriptionsScreen(viewModel: MainViewModel) {
             DefaultSubCard(
                 formatTag = "SING-BOX 1.14+",
                 formatType = "singbox",
-                title = if (isZh) "Sing-Box 官方JSON 订阅" else "Sing-Box Official JSON Sub",
-                subtitle = "",
+                title = if (isZh) "Sing-Box 1.14+ 官方最新版订阅" else "Sing-Box 1.14+ Latest JSON Sub",
+                subtitle = if (isZh) "支持 http_clients 与独立 detour 策略" else "With http_clients & detours",
                 localUrl = singboxLocalUrl,
                 lanUrl = singboxLanUrl,
                 isZh = isZh,
-                onCopyLocal = { copyToClipboard(singboxLocalUrl, "Sing-Box Local Link") },
-                onCopyLan = { copyToClipboard(singboxLanUrl, "Sing-Box LAN Link") },
+                onCopyLocal = { copyToClipboard(singboxLocalUrl, "Sing-Box 1.14+ Local Link") },
+                onCopyLan = { copyToClipboard(singboxLanUrl, "Sing-Box 1.14+ LAN Link") },
                 onQrCode = {
                     val encodedUrl = URLEncoder.encode(singboxLanUrl, "UTF-8")
-                    val encodedName = URLEncoder.encode("Sing-Box", "UTF-8")
+                    val encodedName = URLEncoder.encode("Sing-Box 1.14+", "UTF-8")
                     qrModalUrl = "sing-box://import-remote-profile?url=$encodedUrl#$encodedName"
-                    qrModalTitle = if (isZh) "Sing-Box 局域网订阅二维码" else "Sing-Box LAN QR Code"
+                    qrModalTitle = if (isZh) "Sing-Box 1.14+ 局域网订阅二维码" else "Sing-Box 1.14+ LAN QR Code"
+                }
+            )
+        }
+
+        // Sing-Box 1.13 及旧版
+        item {
+            val singbox113LocalUrl = "http://127.0.0.1:$port/sub?type=singbox&ver=1.13$tokenParam"
+            val singbox113LanUrl = "http://$localIp:$port/sub?type=singbox&ver=1.13$tokenParam"
+            DefaultSubCard(
+                formatTag = "SING-BOX 1.13",
+                formatType = "singbox113",
+                title = if (isZh) "Sing-Box 1.13 及旧版兼容订阅" else "Sing-Box 1.13 Legacy JSON Sub",
+                subtitle = if (isZh) "兼容 1.13/1.12 旧内核客户端，使用 download_detour" else "Compatible with 1.13/1.12 legacy clients",
+                localUrl = singbox113LocalUrl,
+                lanUrl = singbox113LanUrl,
+                isZh = isZh,
+                onCopyLocal = { copyToClipboard(singbox113LocalUrl, "Sing-Box 1.13 Local Link") },
+                onCopyLan = { copyToClipboard(singbox113LanUrl, "Sing-Box 1.13 LAN Link") },
+                onQrCode = {
+                    val encodedUrl = URLEncoder.encode(singbox113LanUrl, "UTF-8")
+                    val encodedName = URLEncoder.encode("Sing-Box 1.13", "UTF-8")
+                    qrModalUrl = "sing-box://import-remote-profile?url=$encodedUrl#$encodedName"
+                    qrModalTitle = if (isZh) "Sing-Box 1.13 局域网订阅二维码" else "Sing-Box 1.13 LAN QR Code"
                 }
             )
         }
@@ -616,10 +639,18 @@ fun SavedCustomSubCard(
 ) {
     val activeToken = customSub.token.ifBlank { serverToken }
     val tokenParam = if (activeToken.isNotBlank()) "&token=$activeToken" else ""
-    val nodeParam = if (customSub.nodeIds.isNotBlank()) "&nodes=${customSub.nodeIds}" else ""
 
-    val localUrl = "http://127.0.0.1:$port/sub?type=${customSub.format}$tokenParam$nodeParam"
-    val lanUrl = "http://$localIp:$port/sub?type=${customSub.format}$tokenParam$nodeParam"
+    // Permanent unique URL tied to the custom subscription ID
+    val localUrl = "http://127.0.0.1:$port/sub?sid=${customSub.id}$tokenParam"
+    val lanUrl = "http://$localIp:$port/sub?sid=${customSub.id}$tokenParam"
+
+    val formatBadge = when (customSub.format) {
+        "singbox113" -> "SING-BOX 1.13"
+        "singbox" -> "SING-BOX 1.14+"
+        "mihomo" -> "MIHOMO"
+        "base64" -> "BASE64"
+        else -> customSub.format.uppercase()
+    }
 
     val nodeCountText = if (customSub.nodeIds.isBlank()) {
         if (isZh) "所有节点" else "All Nodes"
@@ -692,7 +723,7 @@ fun SavedCustomSubCard(
                         color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
-                            text = customSub.format.uppercase(),
+                            text = formatBadge,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
