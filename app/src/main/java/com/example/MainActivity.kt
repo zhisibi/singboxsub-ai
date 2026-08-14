@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Language
@@ -90,7 +91,7 @@ class MainActivity : ComponentActivity() {
 sealed class NavigationTab(val route: String, val titleEn: String, val titleZh: String, val icon: ImageVector) {
     object Server : NavigationTab("server", "Dashboard", "首页", Icons.Default.Dns)
     object Subscriptions : NavigationTab("subscriptions", "Subscriptions", "订阅列表", Icons.Default.RssFeed)
-    object Nodes : NavigationTab("nodes", "Nodes", "节点列表", Icons.Default.List)
+    object Nodes : NavigationTab("nodes", "Nodes", "节点列表", Icons.AutoMirrored.Filled.List)
     object Config : NavigationTab("settings", "Settings", "设置", Icons.Default.Settings)
 }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.List
@@ -202,7 +203,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
                         // Stat 1: Nodes
                         StatTile(
                             modifier = Modifier.weight(1f),
-                            icon = Icons.Default.List,
+                            icon = Icons.AutoMirrored.Filled.List,
                             title = if (isZh) "可用节点" else "Active Nodes",
                             value = "$activeNodeCount / ${nodes.size}",
                             containerColor = MaterialTheme.colorScheme.primaryContainer
