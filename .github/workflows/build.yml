@@ -25,6 +25,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Setup Dummy Google Services if Missing
+        run: |
+          if [ ! -f app/google-services.json ]; then
+            echo '{"project_info":{"project_number":"000000000000","project_id":"singboxsub-app","storage_bucket":"singboxsub-app.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:000000000000:android:0000000000000000","android_client_info":{"package_name":"com.aistudio.singboxsub.app"}},"oauth_client":[],"api_key":[{"current_key":"AIzaSyDummyKeyForBuildVerification0000"}],"services":{"analytics_service":{"status":1}}}]}' > app/google-services.json
+          fi
+
       - name: Restore Debug Keystore
         run: |
           if [ -f debug.keystore.base64 ]; then

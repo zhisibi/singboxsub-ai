@@ -584,7 +584,7 @@ object SubscriptionParser {
                     val path = transportObj?.optString("path", "") ?: ""
                     val grpcService = transportObj?.optString("service_name", "") ?: ""
                     val headersObj = transportObj?.optJSONObject("headers")
-                    val host = headersObj?.optString("host", headersObj?.optString("Host", "")) ?: ""
+                    val host = headersObj?.optString("host", headersObj.optString("Host", "")) ?: ""
 
                     val obfsObj = ob.optJSONObject("obfs")
                     val obfsType = obfsObj?.optString("type", "") ?: ""
