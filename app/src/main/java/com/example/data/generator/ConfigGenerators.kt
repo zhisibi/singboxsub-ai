@@ -27,65 +27,78 @@ object SingBoxConfigGenerator {
         val enabledNodes = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
         val root = JSONObject()
 
-        // 1. Log configuration
-        val log = JSONObject().apply {
-            put("disabled", false)
-            put("level", "info")
-            put("timestamp", true)
+        // 1. http_clients
+        val httpClients = JSONArray().apply {
+            put(JSONObject().apply {
+                put("tag", "default-http-client")
+                put("detour", "🚀 节点选择")
+            })
         }
-        root.put("log", log)
+        root.put("http_clients", httpClients)
 
-        // 2. Modern DNS configuration (Compatible with sing-box 1.12+ and 1.14+)
+        // 2. dns configuration matching user template
         val dns = JSONObject().apply {
             val servers = JSONArray().apply {
                 put(JSONObject().apply {
-                    put("type", "https")
-                    put("tag", "dns-remote")
+                    put("type", "tcp")
+                    put("tag", "dns_proxy")
                     put("server", "1.1.1.1")
-                    put("path", "/dns-query")
-                    put("detour", "🎯 直连")
+                    put("detour", "🚀 节点选择")
+                    put("domain_resolver", "dns_resolver")
+                })
+                put(JSONObject().apply {
+                    put("type", "https")
+                    put("tag", "dns_direct")
+                    put("server", "dns.alidns.com")
+                    put("domain_resolver", "dns_resolver")
                 })
                 put(JSONObject().apply {
                     put("type", "udp")
-                    put("tag", "dns-direct")
+                    put("tag", "dns_resolver")
                     put("server", "223.5.5.5")
+                })
+                put(JSONObject().apply {
+                    put("type", "fakeip")
+                    put("tag", "dns_fakeip")
+                    put("inet4_range", "198.18.0.0/15")
+                    put("inet6_range", "fc00::/18")
                 })
             }
             put("servers", servers)
 
             val dnsRules = JSONArray().apply {
                 put(JSONObject().apply {
-                    put("clash_mode", "Direct")
-                    put("server", "dns-direct")
+                    put("rule_set", "geolocation-!cn")
+                    put("query_type", JSONArray().apply { put("A"); put("AAAA") })
+                    put("server", "dns_fakeip")
                 })
                 put(JSONObject().apply {
-                    put("clash_mode", "Global")
-                    put("server", "dns-remote")
+                    put("rule_set", "geolocation-!cn")
+                    put("query_type", "CNAME")
+                    put("server", "dns_proxy")
                 })
                 put(JSONObject().apply {
-                    put("rule_set", JSONArray().apply { put("geosite-cn") })
-                    put("server", "dns-direct")
-                })
-                put(JSONObject().apply {
-                    put("domain_suffix", JSONArray().apply {
-                        put(".cn")
-                        put("baidu.com")
-                        put("qq.com")
-                        put("taobao.com")
-                        put("alipay.com")
-                        put("jd.com")
-                    })
-                    put("server", "dns-direct")
+                    put("query_type", JSONArray().apply { put("A"); put("AAAA"); put("CNAME") })
+                    put("invert", true)
+                    put("action", "predefined")
+                    put("rcode", "REFUSED")
                 })
             }
             put("rules", dnsRules)
-            put("final", "dns-remote")
-            put("strategy", "prefer_ipv4")
-            put("independent_cache", true)
+            put("final", "dns_direct")
         }
         root.put("dns", dns)
 
-        // 3. Inbounds configuration
+        // 3. ntp
+        val ntp = JSONObject().apply {
+            put("enabled", true)
+            put("server", "time.apple.com")
+            put("server_port", 123)
+            put("interval", "30m")
+        }
+        root.put("ntp", ntp)
+
+        // 4. inbounds configuration
         val inbounds = JSONArray().apply {
             put(JSONObject().apply {
                 put("type", "mixed")
@@ -93,10 +106,18 @@ object SingBoxConfigGenerator {
                 put("listen", "0.0.0.0")
                 put("listen_port", inboundPort)
             })
+            put(JSONObject().apply {
+                put("type", "tun")
+                put("tag", "tun-in")
+                put("address", "172.19.0.1/30")
+                put("auto_route", true)
+                put("strict_route", true)
+                put("stack", "mixed")
+            })
         }
         root.put("inbounds", inbounds)
 
-        // 4. Outbounds configuration
+        // 5. outbounds configuration
         val outbounds = JSONArray()
         val nodeTags = enabledNodes.map { it.name }.filter { it.isNotEmpty() }
 
@@ -106,11 +127,10 @@ object SingBoxConfigGenerator {
             put("tag", "🚀 节点选择")
             val outList = JSONArray().apply {
                 put("⚡ 自动选择")
-                put("🎯 直连")
                 nodeTags.forEach { put(it) }
+                put("DIRECT")
             }
             put("outbounds", outList)
-            put("default", if (nodeTags.isNotEmpty()) nodeTags[0] else "🎯 直连")
         }
         outbounds.put(selectorOutbound)
 
@@ -121,7 +141,7 @@ object SingBoxConfigGenerator {
             val outList = JSONArray().apply {
                 nodeTags.forEach { put(it) }
             }
-            put("outbounds", if (outList.length() > 0) outList else JSONArray().apply { put("🎯 直连") })
+            put("outbounds", if (outList.length() > 0) outList else JSONArray().apply { put("DIRECT") })
             put("url", "http://www.gstatic.com/generate_204")
             put("interval", "3m")
             put("tolerance", 50)
@@ -131,14 +151,28 @@ object SingBoxConfigGenerator {
         // Direct outbound
         outbounds.put(JSONObject().apply {
             put("type", "direct")
-            put("tag", "🎯 直连")
+            put("tag", "DIRECT")
         })
 
-        // Block outbound
-        outbounds.put(JSONObject().apply {
-            put("type", "block")
-            put("tag", "🛑 拦截")
-        })
+        // Additional policy group selectors matching user template
+        val extraSelectors = listOf("🏠 私有网络", "🔒 国内服务", "🌐 非中国", "🐟 漏网之鱼")
+        extraSelectors.forEach { selName ->
+            outbounds.put(JSONObject().apply {
+                put("type", "selector")
+                put("tag", selName)
+                put("outbounds", JSONArray().apply {
+                    if (selName == "🌐 非中国" || selName == "🐟 漏网之鱼") {
+                        put("🚀 节点选择")
+                        nodeTags.forEach { put(it) }
+                        put("DIRECT")
+                    } else {
+                        put("DIRECT")
+                        put("🚀 节点选择")
+                        nodeTags.forEach { put(it) }
+                    }
+                })
+            })
+        }
 
         // Node outbounds
         enabledNodes.forEach { node ->
@@ -150,42 +184,65 @@ object SingBoxConfigGenerator {
 
         root.put("outbounds", outbounds)
 
-        // 5. Route configuration
+        // 6. Route configuration
         val route = JSONObject().apply {
-            put("default_domain_resolver", "dns-direct")
+            put("default_domain_resolver", "dns_resolver")
+            put("default_http_client", "default-http-client")
 
             val ruleSet = JSONArray().apply {
                 put(JSONObject().apply {
+                    put("tag", "geolocation-cn")
                     put("type", "remote")
-                    put("tag", "geosite-cn")
                     put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs")
-                    put("download_detour", "🎯 直连")
+                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/geolocation-cn.srs")
+                    put("http_client", "default-http-client")
                 })
                 put(JSONObject().apply {
+                    put("tag", "cn")
                     put("type", "remote")
-                    put("tag", "geoip-cn")
                     put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs")
-                    put("download_detour", "🎯 直连")
+                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/cn.srs")
+                    put("http_client", "default-http-client")
                 })
                 put(JSONObject().apply {
+                    put("tag", "geolocation-!cn")
                     put("type", "remote")
-                    put("tag", "geosite-category-ads-all")
                     put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs")
-                    put("download_detour", "🎯 直连")
+                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geosite/geolocation-!cn.srs")
+                    put("http_client", "default-http-client")
+                })
+                put(JSONObject().apply {
+                    put("tag", "private-ip")
+                    put("type", "remote")
+                    put("format", "binary")
+                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/private.srs")
+                    put("http_client", "default-http-client")
+                })
+                put(JSONObject().apply {
+                    put("tag", "cn-ip")
+                    put("type", "remote")
+                    put("format", "binary")
+                    put("url", "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/geo/geoip/cn.srs")
+                    put("http_client", "default-http-client")
                 })
             }
             put("rule_set", ruleSet)
 
             val rules = JSONArray()
 
-            // Modern sing-box 1.11+ sniffing & 1.12+ DNS hijack action
+            rules.put(JSONObject().apply {
+                put("clash_mode", "direct")
+                put("outbound", "DIRECT")
+            })
+            rules.put(JSONObject().apply {
+                put("clash_mode", "global")
+                put("outbound", "🚀 节点选择")
+            })
             rules.put(JSONObject().apply {
                 put("action", "sniff")
             })
             rules.put(JSONObject().apply {
+                put("protocol", "dns")
                 put("action", "hijack-dns")
             })
 
@@ -197,48 +254,42 @@ object SingBoxConfigGenerator {
                 }
                 "Direct" -> {
                     rules.put(JSONObject().apply {
-                        put("outbound", "🎯 直连")
+                        put("outbound", "DIRECT")
                     })
                 }
-                else -> { // Rule mode
+                else -> {
                     rules.put(JSONObject().apply {
-                        put("ip_is_private", true)
-                        put("outbound", "🎯 直连")
+                        put("rule_set", JSONArray().apply { put("geolocation-cn"); put("cn") })
+                        put("outbound", "🔒 国内服务")
                     })
                     rules.put(JSONObject().apply {
-                        put("rule_set", JSONArray().apply { put("geosite-category-ads-all") })
-                        put("outbound", "🛑 拦截")
+                        put("rule_set", JSONArray().apply { put("geolocation-!cn") })
+                        put("outbound", "🌐 非中国")
                     })
                     rules.put(JSONObject().apply {
-                        put("rule_set", JSONArray().apply {
-                            put("geosite-cn")
-                            put("geoip-cn")
-                        })
-                        put("outbound", "🎯 直连")
+                        put("rule_set", JSONArray().apply { put("private-ip") })
+                        put("outbound", "🏠 私有网络")
                     })
                     rules.put(JSONObject().apply {
-                        put("domain_suffix", JSONArray().apply {
-                            put(".cn")
-                            put("baidu.com")
-                            put("qq.com")
-                            put("taobao.com")
-                            put("alipay.com")
-                            put("jd.com")
-                            put("163.com")
-                            put("weibo.com")
-                            put("amap.com")
-                            put("bilibili.com")
-                            put("bytedance.com")
-                        })
-                        put("outbound", "🎯 直连")
+                        put("rule_set", JSONArray().apply { put("cn-ip") })
+                        put("outbound", "🔒 国内服务")
                     })
                 }
             }
             put("rules", rules)
-            put("final", "🚀 节点选择")
             put("auto_detect_interface", true)
+            put("final", "🐟 漏网之鱼")
         }
         root.put("route", route)
+
+        // 7. Experimental
+        val experimental = JSONObject().apply {
+            put("cache_file", JSONObject().apply {
+                put("enabled", true)
+                put("store_fakeip", true)
+            })
+        }
+        root.put("experimental", experimental)
 
         return root.toString(2)
     }
@@ -268,7 +319,7 @@ object SingBoxConfigGenerator {
                         if (node.path.isNotEmpty()) put("path", node.path)
                         if (node.host.isNotEmpty()) {
                             put("headers", JSONObject().apply {
-                                put("Host", JSONArray().apply { put(node.host) })
+                                put("host", node.host)
                             })
                         }
                     }
@@ -278,14 +329,26 @@ object SingBoxConfigGenerator {
             "vmess" -> {
                 ob.put("type", "vmess")
                 ob.put("uuid", node.uuidOrPassword)
-                ob.put("security", if (node.cipher.isNotEmpty()) node.cipher else "auto")
                 ob.put("alter_id", node.alterId)
+                ob.put("security", if (node.cipher.isNotEmpty()) node.cipher else "auto")
                 if (node.tls) {
                     val tlsObj = JSONObject().apply {
                         put("enabled", true)
                         put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
                     }
                     ob.put("tls", tlsObj)
+                }
+                if (node.network.isNotEmpty() && node.network != "tcp") {
+                    val transport = JSONObject().apply {
+                        put("type", node.network)
+                        if (node.path.isNotEmpty()) put("path", node.path)
+                        if (node.host.isNotEmpty()) {
+                            put("headers", JSONObject().apply {
+                                put("host", node.host)
+                            })
+                        }
+                    }
+                    ob.put("transport", transport)
                 }
             }
             "ss", "shadowsocks" -> {
@@ -299,6 +362,7 @@ object SingBoxConfigGenerator {
                 val tlsObj = JSONObject().apply {
                     put("enabled", true)
                     put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
+                    put("insecure", node.allowInsecure)
                 }
                 ob.put("tls", tlsObj)
             }
@@ -309,6 +373,19 @@ object SingBoxConfigGenerator {
                     put("enabled", true)
                     put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
                     put("insecure", node.allowInsecure)
+                }
+                ob.put("tls", tlsObj)
+            }
+            "tuic" -> {
+                ob.put("type", "tuic")
+                ob.put("uuid", node.uuidOrPassword)
+                ob.put("password", node.uuidOrPassword)
+                ob.put("congestion_control", "bbr")
+                val tlsObj = JSONObject().apply {
+                    put("enabled", true)
+                    put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
+                    put("insecure", node.allowInsecure)
+                    put("alpn", JSONArray().apply { put("h3") })
                 }
                 ob.put("tls", tlsObj)
             }
@@ -331,6 +408,14 @@ object SingBoxConfigGenerator {
                 ob.put("type", "http")
                 if (node.host.isNotEmpty()) ob.put("username", node.host)
                 if (node.uuidOrPassword.isNotEmpty()) ob.put("password", node.uuidOrPassword)
+                if (node.tls) {
+                    val tlsObj = JSONObject().apply {
+                        put("enabled", true)
+                        put("server_name", if (node.sni.isNotEmpty()) node.sni else node.server)
+                        put("insecure", node.allowInsecure)
+                    }
+                    ob.put("tls", tlsObj)
+                }
             }
             else -> return null
         }
@@ -354,7 +439,6 @@ object ClashConfigGenerator {
     fun generateYaml(nodes: List<ProxyNode>, isMihomo: Boolean = true): String {
         val enabled = if (nodes.any { it.enabled }) nodes.filter { it.enabled } else nodes.ifEmpty { listOf(fallbackDummyNode) }
         val sb = StringBuilder()
-        sb.appendLine("# Mihomo / Clash Meta Universal Subscription Config")
         sb.appendLine("port: 7890")
         sb.appendLine("socks-port: 7891")
         sb.appendLine("allow-lan: true")
@@ -414,6 +498,18 @@ object ClashConfigGenerator {
                     if (node.tls) {
                         sb.appendLine("    tls: true")
                         sb.appendLine("    servername: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                        if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                    }
+                    if (node.network.isNotEmpty() && node.network != "tcp") {
+                        sb.appendLine("    network: ${node.network}")
+                        if (node.network == "ws") {
+                            sb.appendLine("    ws-opts:")
+                            if (node.path.isNotEmpty()) sb.appendLine("      path: \"${node.path}\"")
+                            if (node.host.isNotEmpty()) {
+                                sb.appendLine("      headers:")
+                                sb.appendLine("        Host: \"${node.host}\"")
+                            }
+                        }
                     }
                 }
                 "ss", "shadowsocks" -> {
@@ -423,10 +519,19 @@ object ClashConfigGenerator {
                 "trojan" -> {
                     sb.appendLine("    password: \"${node.uuidOrPassword}\"")
                     sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "hysteria2", "hy2" -> {
                     sb.appendLine("    password: \"${node.uuidOrPassword}\"")
                     sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                }
+                "tuic" -> {
+                    sb.appendLine("    uuid: \"${node.uuidOrPassword}\"")
+                    sb.appendLine("    password: \"${node.uuidOrPassword}\"")
+                    sb.appendLine("    sni: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                    sb.appendLine("    congestion-control: bbr")
+                    sb.appendLine("    alpn: [h3]")
                     if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
                 }
                 "anytls" -> {
@@ -441,12 +546,18 @@ object ClashConfigGenerator {
                 else -> { // http
                     if (node.host.isNotEmpty()) sb.appendLine("    username: \"${node.host}\"")
                     if (node.uuidOrPassword.isNotEmpty()) sb.appendLine("    password: \"${node.uuidOrPassword}\"")
+                    if (node.tls) {
+                        sb.appendLine("    tls: true")
+                        sb.appendLine("    servername: \"${if (node.sni.isNotEmpty()) node.sni else node.server}\"")
+                        if (node.allowInsecure) sb.appendLine("    skip-cert-verify: true")
+                    }
                 }
             }
         }
 
         sb.appendLine()
         sb.appendLine("proxy-groups:")
+        // 1. 🚀 节点选择
         sb.appendLine("  - name: 🚀 节点选择")
         sb.appendLine("    type: select")
         sb.appendLine("    proxies:")
@@ -454,16 +565,50 @@ object ClashConfigGenerator {
         sb.appendLine("      - DIRECT")
         enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
 
+        // 2. ⚡ 自动选择
         sb.appendLine("  - name: ⚡ 自动选择")
         sb.appendLine("    type: url-test")
         sb.appendLine("    url: http://www.gstatic.com/generate_204")
         sb.appendLine("    interval: 300")
+        sb.appendLine("    tolerance: 50")
         sb.appendLine("    proxies:")
         if (enabled.isNotEmpty()) {
             enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
         } else {
             sb.appendLine("      - DIRECT")
         }
+
+        // 3. 🏠 私有网络
+        sb.appendLine("  - name: 🏠 私有网络")
+        sb.appendLine("    type: select")
+        sb.appendLine("    proxies:")
+        sb.appendLine("      - DIRECT")
+        sb.appendLine("      - 🚀 节点选择")
+        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+
+        // 4. 🔒 国内服务
+        sb.appendLine("  - name: 🔒 国内服务")
+        sb.appendLine("    type: select")
+        sb.appendLine("    proxies:")
+        sb.appendLine("      - DIRECT")
+        sb.appendLine("      - 🚀 节点选择")
+        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+
+        // 5. 🌐 非中国
+        sb.appendLine("  - name: 🌐 非中国")
+        sb.appendLine("    type: select")
+        sb.appendLine("    proxies:")
+        sb.appendLine("      - 🚀 节点选择")
+        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+        sb.appendLine("      - DIRECT")
+
+        // 6. 🐟 漏网之鱼
+        sb.appendLine("  - name: 🐟 漏网之鱼")
+        sb.appendLine("    type: select")
+        sb.appendLine("    proxies:")
+        sb.appendLine("      - 🚀 节点选择")
+        enabled.forEach { sb.appendLine("      - \"${it.name}\"") }
+        sb.appendLine("      - DIRECT")
 
         sb.appendLine()
         sb.appendLine("rules:")
@@ -472,7 +617,7 @@ object ClashConfigGenerator {
         sb.appendLine("  - GEOSITE,category-ads-all,REJECT")
         sb.appendLine("  - GEOSITE,cn,DIRECT")
         sb.appendLine("  - GEOIP,cn,DIRECT")
-        sb.appendLine("  - MATCH,🚀 节点选择")
+        sb.appendLine("  - MATCH,🐟 漏网之鱼")
 
         return sb.toString()
     }
@@ -484,6 +629,7 @@ object ClashConfigGenerator {
             "ss", "shadowsocks" -> "ss"
             "trojan" -> "trojan"
             "hysteria2", "hy2" -> "hysteria2"
+            "tuic" -> "tuic"
             "anytls" -> "anytls"
             "socks", "socks5" -> "socks5"
             else -> "http"
